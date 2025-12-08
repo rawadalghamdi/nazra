@@ -9,6 +9,7 @@ import CameraManagement from './components/Camera/CameraManagement'
 import CameraDetail from './components/Camera/CameraDetail'
 import AlertsList from './components/Alerts/AlertsList'
 import Settings from './components/Settings/Settings'
+import ReportsPage from './components/Reports/ReportsPage'
 
 function App() {
   return (
@@ -31,6 +32,7 @@ function App() {
           <Route path="cameras/:id" element={<CameraDetail />} />
           <Route path="cameras/:id/view" element={<CameraView />} />
           <Route path="alerts" element={<AlertsList />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
