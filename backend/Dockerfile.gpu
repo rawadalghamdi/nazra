@@ -1,0 +1,174 @@
+# ==========================================
+# نظام نظرة - Backend Dockerfile with NVIDIA GPU
+# منصة الكشف الاستباقي عن الأسلحة بالذكاء الاصطناعي
+# ==========================================
+# هذا الملف للتشغيل مع NVIDIA GPU
+# يتطلب: nvidia-docker أو Docker مع GPU support
+# ==========================================
+
+# استخدام صورة NVIDIA CUDA الرسمية
+ARG CUDA_VERSION=12.1
+FROM nvidia/cuda:${CUDA_VERSION}.0-cudnn8-runtime-ubuntu22.04 AS base
+
+# ==================
+# معلومات الصورة
+# ==================
+LABEL maintainer="Nazra Team"
+LABEL description="Nazra Backend with GPU - Weapon Detection API"
+LABEL version="1.0.0"
+LABEL cuda.version="${CUDA_VERSION}"
+
+# ==================
+# إعداد متغيرات البيئة
+# ==================
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONFAULTHANDLER=1
+ENV DEBIAN_FRONTEND=noninteractive
+ENV APP_HOME=/app
+ENV PATH="${APP_HOME}/.venv/bin:$PATH"
+
+# المنطقة الزمنية
+ENV TZ=Asia/Riyadh
+
+# إعدادات CUDA
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,video
+ENV CUDA_HOME=/usr/local/cuda
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+
+# ==================
+# تثبيت Python والتبعيات النظامية
+# ==================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Python
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3-pip \
+    # أدوات البناء
+    build-essential \
+    cmake \
+    pkg-config \
+    # مكتبات OpenCV
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
+    libgstreamer1.0-0 \
+    libgstreamer-plugins-base1.0-0 \
+    libgstreamer-plugins-good1.0-0 \
+    gstreamer1.0-tools \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    # FFmpeg للفيديو
+    ffmpeg \
+    # مكتبات إضافية
+    libavcodec-dev \
+    libavformat-dev \
+    libswscale-dev \
+    libv4l-dev \
+    # أدوات الشبكة والنظام
+    curl \
+    wget \
+    tzdata \
+    ca-certificates \
+    # تنظيف
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# ==================
+# مرحلة التبعيات
+# ==================
+FROM base AS dependencies
+
+WORKDIR ${APP_HOME}
+
+# إنشاء بيئة افتراضية
+RUN python3 -m venv .venv
+
+# تفعيل البيئة الافتراضية
+ENV PATH="${APP_HOME}/.venv/bin:$PATH"
+
+# نسخ ملفات المتطلبات
+COPY requirements.txt .
+COPY requirements-gpu.txt* ./
+
+# تثبيت التبعيات الأساسية
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+# تثبيت PyTorch مع دعم CUDA
+RUN pip install --no-cache-dir \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# تثبيت تبعيات GPU الإضافية إن وجدت
+RUN if [ -f requirements-gpu.txt ]; then \
+        pip install --no-cache-dir -r requirements-gpu.txt; \
+    fi
+
+# ==================
+# مرحلة الإنتاج
+# ==================
+FROM base AS production
+
+WORKDIR ${APP_HOME}
+
+# نسخ البيئة الافتراضية
+COPY --from=dependencies ${APP_HOME}/.venv ${APP_HOME}/.venv
+
+# نسخ الكود المصدري
+COPY . .
+
+# ==================
+# إنشاء المجلدات اللازمة
+# ==================
+RUN mkdir -p \
+    ${APP_HOME}/data \
+    ${APP_HOME}/models \
+    ${APP_HOME}/uploads \
+    ${APP_HOME}/alerts \
+    ${APP_HOME}/snapshots \
+    ${APP_HOME}/video_clips \
+    ${APP_HOME}/logs \
+    && chmod -R 755 ${APP_HOME}
+
+# ==================
+# إنشاء مستخدم غير root للأمان
+# ==================
+RUN groupadd --gid 1000 nazra && \
+    useradd --uid 1000 --gid nazra --shell /bin/bash --create-home nazra && \
+    chown -R nazra:nazra ${APP_HOME}
+
+# التبديل للمستخدم الجديد
+USER nazra
+
+# ==================
+# فتح المنفذ
+# ==================
+EXPOSE 8000
+
+# ==================
+# متغيرات البيئة للتشغيل
+# ==================
+ENV WORKERS=1
+ENV HOST=0.0.0.0
+ENV PORT=8000
+ENV USE_GPU=true
+ENV CUDA_VISIBLE_DEVICES=0
+
+# ==================
+# فحص الصحة
+# ==================
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/api/health || exit 1
+
+# ==================
+# أمر التشغيل
+# ==================
+CMD ["sh", "-c", "uvicorn app.main:app --host ${HOST} --port ${PORT} --workers ${WORKERS} --loop uvloop --http httptools"]

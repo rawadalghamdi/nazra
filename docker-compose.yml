@@ -1,0 +1,338 @@
+# ==========================================
+# نظام نظرة - Docker Compose
+# منصة الكشف الاستباقي عن الأسلحة بالذكاء الاصطناعي
+# ==========================================
+# الاستخدام:
+#   التطوير: docker-compose up -d
+#   الإنتاج: docker-compose --profile production up -d
+#   مع GPU: docker-compose --profile gpu up -d
+# ==========================================
+
+version: '3.8'
+
+# ==========================================
+# الخدمات
+# ==========================================
+services:
+  # ------------------------------------------
+  # خدمة Frontend - واجهة المستخدم
+  # ------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NODE_ENV=production
+    container_name: nazra-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+      - VITE_WS_URL=ws://localhost:8000/ws
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "nazra.service=frontend"
+      - "nazra.description=واجهة المستخدم"
+
+  # ------------------------------------------
+  # خدمة Backend - الخادم الخلفي
+  # ------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        - INSTALL_DEV=false
+    container_name: nazra-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # قاعدة البيانات
+      - DATABASE_URL=sqlite+aiosqlite:///./data/nazra.db
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      # الأمان
+      - SECRET_KEY=${SECRET_KEY:-nazra-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-key-change-in-production}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      # نموذج الذكاء الاصطناعي
+      - YOLO_MODEL_PATH=/app/models/yolo11_weapons.pt
+      - DETECTION_THRESHOLD=${DETECTION_THRESHOLD:-0.7}
+      - NMS_THRESHOLD=${NMS_THRESHOLD:-0.4}
+      # الإعدادات العامة
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_WORKERS=${MAX_WORKERS:-4}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    volumes:
+      # البيانات المستمرة
+      - nazra-data:/app/data
+      - nazra-models:/app/models
+      - nazra-uploads:/app/uploads
+      - nazra-alerts:/app/alerts
+      - nazra-snapshots:/app/snapshots
+      - nazra-logs:/app/logs
+      # للتطوير - mount المجلدات المحلية
+      - ./backend/data:/app/data
+      - ./backend/models:/app/models
+      - ./backend/uploads:/app/uploads
+      - ./backend/alerts:/app/alerts
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    labels:
+      - "nazra.service=backend"
+      - "nazra.description=الخادم الخلفي وAPI"
+
+  # ------------------------------------------
+  # خدمة Backend مع GPU - للإنتاج
+  # ------------------------------------------
+  backend-gpu:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.gpu
+      args:
+        - CUDA_VERSION=12.1
+    container_name: nazra-backend-gpu
+    ports:
+      - "8000:8000"
+    environment:
+      # قاعدة البيانات
+      - DATABASE_URL=sqlite+aiosqlite:///./data/nazra.db
+      - REDIS_URL=redis://redis:6379
+      # الأمان
+      - SECRET_KEY=${SECRET_KEY:-nazra-secret-key-change-in-production}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-jwt-secret-key-change-in-production}
+      # نموذج الذكاء الاصطناعي
+      - YOLO_MODEL_PATH=/app/models/yolo11_weapons.pt
+      - DETECTION_THRESHOLD=${DETECTION_THRESHOLD:-0.7}
+      - USE_GPU=true
+      - CUDA_VISIBLE_DEVICES=0
+      # الإعدادات
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    volumes:
+      - nazra-data:/app/data
+      - nazra-models:/app/models
+      - nazra-uploads:/app/uploads
+      - nazra-alerts:/app/alerts
+      - nazra-snapshots:/app/snapshots
+      - nazra-logs:/app/logs
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, compute, utility]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+    profiles:
+      - gpu
+    labels:
+      - "nazra.service=backend-gpu"
+      - "nazra.description=الخادم الخلفي مع دعم GPU"
+
+  # ------------------------------------------
+  # Redis - التخزين المؤقت والرسائل
+  # ------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nazra-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "nazra.service=redis"
+      - "nazra.description=التخزين المؤقت"
+
+  # ------------------------------------------
+  # Nginx - Reverse Proxy (للإنتاج)
+  # ------------------------------------------
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: nazra-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+    profiles:
+      - production
+    labels:
+      - "nazra.service=nginx"
+      - "nazra.description=Reverse Proxy"
+
+  # ------------------------------------------
+  # Prometheus - المراقبة (اختياري)
+  # ------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nazra-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    profiles:
+      - monitoring
+    labels:
+      - "nazra.service=prometheus"
+
+  # ------------------------------------------
+  # Grafana - لوحة المراقبة (اختياري)
+  # ------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nazra-grafana
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - nazra-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+    labels:
+      - "nazra.service=grafana"
+
+# ==========================================
+# الشبكات
+# ==========================================
+networks:
+  nazra-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ==========================================
+# وحدات التخزين
+# ==========================================
+volumes:
+  # بيانات التطبيق
+  nazra-data:
+    driver: local
+  nazra-models:
+    driver: local
+  nazra-uploads:
+    driver: local
+  nazra-alerts:
+    driver: local
+  nazra-snapshots:
+    driver: local
+  nazra-logs:
+    driver: local
+  # Redis
+  redis-data:
+    driver: local
+  # Nginx
+  nginx-logs:
+    driver: local
+  # المراقبة
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local

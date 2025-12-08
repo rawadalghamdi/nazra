@@ -1,0 +1,62 @@
+# تجاهل node_modules
+node_modules/
+dist/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+
+# البيئة
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# نظام التشغيل
+.DS_Store
+Thumbs.db
+
+# السجلات
+*.log
+logs/
+
+# قاعدة البيانات
+*.db
+*.sqlite
+
+# الملفات المؤقتة
+tmp/
+temp/
+.tmp/
+
+# التغطية والاختبارات
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# النماذج (كبيرة الحجم)
+*.pt
+*.pth
+*.onnx
+models/
+
+# الوسائط المرفوعة
+uploads/
+alerts/
+
+# Docker
+.docker/

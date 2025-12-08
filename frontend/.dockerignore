@@ -1,0 +1,73 @@
+# ==========================================
+# نظام نظرة - Docker Ignore للـ Frontend
+# ==========================================
+
+# التبعيات
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# مخرجات البناء (سيتم بناؤها داخل Docker)
+dist
+build
+
+# البيئة
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# الاختبارات
+coverage/
+.nyc_output/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+
+# Docker
+Dockerfile*
+docker-compose*
+.docker/
+
+# الوثائق
+docs/
+*.md
+LICENSE
+
+# السجلات
+*.log
+logs/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Storybook
+.storybook/
+storybook-static/
+
+# التحليل
+.eslintcache
+.stylelintcache
