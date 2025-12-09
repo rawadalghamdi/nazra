@@ -38,8 +38,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # متغيرات البيئة للبناء
-ARG VITE_API_URL=http://localhost:8000/api
-ARG VITE_WS_URL=ws://localhost:8000/ws
+ARG VITE_API_URL=/api/v1
+ARG VITE_WS_URL=/ws
 ARG NODE_ENV=production
 
 ENV VITE_API_URL=$VITE_API_URL

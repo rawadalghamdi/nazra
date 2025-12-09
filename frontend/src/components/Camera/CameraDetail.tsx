@@ -25,81 +25,22 @@ import {
   Circle,
 } from 'lucide-react';
 import type { Camera, Alert, Detection } from '../../types';
+import { cameraService, alertService, cameraStreamService } from '../../services/api';
 import LiveStream from './LiveStream';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// بيانات وهمية
-// ═══════════════════════════════════════════════════════════════════════════
-const mockCamera: Camera = {
-  id: 'cam-1',
-  name: 'كاميرا البوابة الرئيسية',
-  location: 'المدخل الشمالي - المبنى A',
-  rtspUrl: 'rtsp://192.168.1.100:554/stream1',
-  status: 'online',
-  isRecording: true,
-  lastDetection: '2024-03-15T10:30:00',
-  detectionEnabled: true,
-  sensitivity: 75,
-  resolution: '1920x1080',
-  fps: 30,
-  createdAt: '2024-01-01T00:00:00',
-  updatedAt: '2024-03-15T10:30:00',
-};
-
-const mockAlerts: Alert[] = [
-  {
-    id: 'alert-1',
-    cameraId: 'cam-1',
-    cameraName: 'كاميرا البوابة الرئيسية',
-    location: 'المدخل الشمالي',
-    timestamp: '2024-03-15T10:30:00',
-    weaponType: 'مسدس',
-    detectionType: 'weapon',
-    severity: 'critical',
-    status: 'جديد',
-    confidence: 95,
-    imageSnapshot: '',
-    boundingBox: { x: 0.3, y: 0.4, width: 0.1, height: 0.15 },
-  },
-  {
-    id: 'alert-2',
-    cameraId: 'cam-1',
-    cameraName: 'كاميرا البوابة الرئيسية',
-    location: 'المدخل الشمالي',
-    timestamp: '2024-03-15T09:15:00',
-    weaponType: 'سكين',
-    detectionType: 'knife',
-    severity: 'high',
-    status: 'مؤكد',
-    confidence: 88,
-    imageSnapshot: '',
-    boundingBox: { x: 0.5, y: 0.3, width: 0.08, height: 0.12 },
-  },
-  {
-    id: 'alert-3',
-    cameraId: 'cam-1',
-    cameraName: 'كاميرا البوابة الرئيسية',
-    location: 'المدخل الشمالي',
-    timestamp: '2024-03-14T16:45:00',
-    weaponType: 'مسدس',
-    detectionType: 'weapon',
-    severity: 'medium',
-    status: 'إنذار كاذب',
-    confidence: 72,
-    imageSnapshot: '',
-    boundingBox: { x: 0.2, y: 0.5, width: 0.1, height: 0.1 },
-  },
-];
-
-const mockDetections: Detection[] = [
-  {
-    id: 'det-1',
-    type: 'weapon',
-    confidence: 0.95,
-    boundingBox: { x: 0.3, y: 0.4, width: 0.1, height: 0.15 },
-    timestamp: Date.now(),
-  },
-];
+// واجهة إحصائيات الكاميرا
+interface CameraStats {
+  totalDetections: number;
+  accuracy: number;
+  uptime: number;
+  lastActivity: string;
+  storageUsed: string;
+  alertsCount: {
+    total: number;
+    confirmed: number;
+    falsePositive: number;
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // المكون الرئيسي
@@ -111,23 +52,58 @@ function CameraDetail() {
   const [camera, setCamera] = useState<Camera | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [detections, setDetections] = useState<Detection[]>([]);
+  const [cameraStats, setCameraStats] = useState<CameraStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'alerts' | 'settings' | 'stats'>('alerts');
   const [sensitivity, setSensitivity] = useState(75);
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // جلب البيانات
+  // جلب البيانات من API
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchData = async () => {
+      if (!id) {
+        setError('معرف الكاميرا غير موجود');
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
-      // محاكاة جلب البيانات
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setCamera(mockCamera);
-      setAlerts(mockAlerts);
-      setDetections(mockDetections);
-      setSensitivity(mockCamera.sensitivity);
-      setIsLoading(false);
+      setError(null);
+
+      try {
+        // جلب بيانات الكاميرا
+        const cameraData = await cameraService.getById(id);
+        setCamera(cameraData);
+        setSensitivity(cameraData.sensitivity || 75);
+
+        // جلب التنبيهات المرتبطة بالكاميرا
+        try {
+          const alertsResponse = await alertService.getAll({ cameraId: id, limit: 10 });
+          setAlerts(alertsResponse.alerts || []);
+        } catch {
+          // التنبيهات اختيارية - لا نريد فشل الصفحة إذا لم تتوفر
+          setAlerts([]);
+        }
+
+        // جلب إحصائيات الكاميرا
+        try {
+          const statsData = await cameraStreamService.getCameraStats(id);
+          setCameraStats(statsData);
+        } catch {
+          // الإحصائيات اختيارية
+          setCameraStats(null);
+        }
+
+        // الكشوفات فارغة حتى يتم تنفيذ البث المباشر
+        setDetections([]);
+      } catch (err) {
+        console.error('خطأ في جلب بيانات الكاميرا:', err);
+        setError('تعذر تحميل بيانات الكاميرا. تأكد من تشغيل الخادم.');
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     fetchData();
@@ -142,6 +118,25 @@ function CameraDetail() {
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-saudi-green-500/30 border-t-saudi-green-500 rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-nazra-text-muted">جاري تحميل بيانات الكاميرا...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // عرض رسالة الخطأ
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-nazra-text mb-2">خطأ في تحميل البيانات</h2>
+          <p className="text-nazra-text-muted mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/cameras')}
+            className="px-4 py-2 bg-saudi-green-500 text-white rounded-lg hover:bg-saudi-green-600"
+          >
+            العودة لقائمة الكاميرات
+          </button>
         </div>
       </div>
     );
@@ -525,32 +520,46 @@ function CameraDetail() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-nazra-lightest rounded-xl p-6 text-center">
                 <Cpu className="w-8 h-8 text-blue-500 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-nazra-text">98%</p>
+                <p className="text-3xl font-bold text-nazra-text">
+                  {cameraStats ? `${(cameraStats.accuracy * 100).toFixed(0)}%` : '-'}
+                </p>
                 <p className="text-sm text-nazra-text-muted mt-1">دقة الكشف</p>
               </div>
               <div className="bg-nazra-lightest rounded-xl p-6 text-center">
                 <Eye className="w-8 h-8 text-green-500 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-nazra-text">1,247</p>
+                <p className="text-3xl font-bold text-nazra-text">
+                  {cameraStats ? cameraStats.totalDetections.toLocaleString('ar-SA') : '-'}
+                </p>
                 <p className="text-sm text-nazra-text-muted mt-1">عملية كشف</p>
               </div>
               <div className="bg-nazra-lightest rounded-xl p-6 text-center">
                 <HardDrive className="w-8 h-8 text-purple-500 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-nazra-text">24.5 GB</p>
+                <p className="text-3xl font-bold text-nazra-text">
+                  {cameraStats?.storageUsed || '-'}
+                </p>
                 <p className="text-sm text-nazra-text-muted mt-1">تسجيلات محفوظة</p>
               </div>
               <div className="bg-nazra-lightest rounded-xl p-6 text-center">
                 <Activity className="w-8 h-8 text-orange-500 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-nazra-text">45ms</p>
+                <p className="text-3xl font-bold text-nazra-text">
+                  {cameraStats ? `${cameraStats.uptime}ms` : '-'}
+                </p>
                 <p className="text-sm text-nazra-text-muted mt-1">زمن الاستجابة</p>
               </div>
               <div className="bg-nazra-lightest rounded-xl p-6 text-center">
                 <Calendar className="w-8 h-8 text-indigo-500 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-nazra-text">30</p>
-                <p className="text-sm text-nazra-text-muted mt-1">يوم تشغيل متواصل</p>
+                <p className="text-3xl font-bold text-nazra-text">
+                  {cameraStats?.alertsCount?.total?.toLocaleString('ar-SA') || '-'}
+                </p>
+                <p className="text-sm text-nazra-text-muted mt-1">إجمالي التنبيهات</p>
               </div>
               <div className="bg-nazra-lightest rounded-xl p-6 text-center">
                 <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
-                <p className="text-3xl font-bold text-nazra-text">3%</p>
+                <p className="text-3xl font-bold text-nazra-text">
+                  {cameraStats?.alertsCount ? 
+                    `${((cameraStats.alertsCount.falsePositive / (cameraStats.alertsCount.total || 1)) * 100).toFixed(0)}%` 
+                    : '-'}
+                </p>
                 <p className="text-sm text-nazra-text-muted mt-1">نسبة الإنذارات الكاذبة</p>
               </div>
             </div>

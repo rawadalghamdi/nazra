@@ -23,9 +23,9 @@ interface NavigationItem {
 // عناصر القائمة الرئيسية
 const navigation: NavigationItem[] = [
   { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard },
-  { name: 'البث المباشر', href: '/cameras', icon: Video },
+  { name: 'البث المباشر', href: '/live', icon: Video },
   { name: 'التنبيهات', href: '/alerts', icon: Bell, badge: 5 },
-  { name: 'الكاميرات', href: '/cameras/manage', icon: Camera },
+  { name: 'الكاميرات', href: '/cameras', icon: Camera },
   { name: 'التقارير', href: '/reports', icon: FileBarChart },
   { name: 'الإعدادات', href: '/settings', icon: Settings },
 ];

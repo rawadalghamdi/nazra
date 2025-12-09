@@ -10,19 +10,20 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.21.0",
     "axios": "^1.6.2",
-    "socket.io-client": "^4.7.2",
-    "lucide-react": "^0.294.0",
     "date-fns": "^2.30.0",
     "date-fns-tz": "^2.0.0",
-    "recharts": "^2.10.3",
+    "lucide-react": "^0.294.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "react-hot-toast": "^2.4.1",
+    "react-router-dom": "^6.21.0",
+    "recharts": "^2.10.3",
+    "socket.io-client": "^4.7.2",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@types/node": "^24.10.2",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@typescript-eslint/eslint-plugin": "^6.14.0",

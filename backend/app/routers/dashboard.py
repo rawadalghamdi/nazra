@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta
 from app.services.database import get_db
-from app.models.database import Alert, Camera, CameraStatus, AlertSeverity, AlertStatus
+from app.models.alert import Alert, AlertStatus, AlertSeverity
+from app.models.camera import Camera, CameraStatus
 from app.models.schemas import DashboardStats, AlertResponse
 from typing import List
 
@@ -23,7 +24,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     
     # الكاميرات المتصلة
     online_cameras_result = await db.execute(
-        select(func.count(Camera.id)).where(Camera.status == CameraStatus.ONLINE)
+        select(func.count(Camera.id)).where(Camera.status == CameraStatus.ONLINE.value)
     )
     online_cameras = online_cameras_result.scalar() or 0
     
@@ -34,8 +35,8 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     # التنبيهات الحرجة الجديدة
     critical_alerts_result = await db.execute(
         select(func.count(Alert.id)).where(
-            Alert.severity == AlertSeverity.CRITICAL,
-            Alert.status == AlertStatus.NEW
+            Alert.severity == AlertSeverity.CRITICAL.value,
+            Alert.status == AlertStatus.NEW.value
         )
     )
     critical_alerts = critical_alerts_result.scalar() or 0
@@ -65,7 +66,6 @@ async def get_recent_alerts(
     """جلب آخر التنبيهات"""
     result = await db.execute(
         select(Alert)
-        .join(Camera)
         .order_by(Alert.timestamp.desc())
         .limit(limit)
     )
@@ -77,11 +77,11 @@ async def get_recent_alerts(
         alert_dict = {
             "id": alert.id,
             "camera_id": alert.camera_id,
-            "camera_name": alert.camera.name if alert.camera else "غير معروف",
+            "camera_name": alert.camera_name,
             "timestamp": alert.timestamp.isoformat(),
-            "detection_type": alert.detection_type.value,
-            "severity": alert.severity.value,
-            "status": alert.status.value,
+            "weapon_type": alert.weapon_type,
+            "severity": alert.severity,
+            "status": alert.status,
             "confidence": alert.confidence
         }
         response.append(alert_dict)

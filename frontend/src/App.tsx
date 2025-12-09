@@ -7,11 +7,12 @@ import Dashboard from './components/Dashboard/Dashboard'
 import CameraView from './components/Camera/CameraView'
 import CameraManagement from './components/Camera/CameraManagement'
 import CameraDetail from './components/Camera/CameraDetail'
+import LiveStreamPage from './components/Camera/LiveStreamPage'
 import AlertsList from './components/Alerts/AlertsList'
 import Settings from './components/Settings/Settings'
 import ReportsPage from './components/Reports/ReportsPage'
 
-function App() {
+const App: React.FC = () => {
   return (
     <>
       <Toaster
@@ -28,6 +29,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
+          <Route path="live" element={<LiveStreamPage />} />
           <Route path="cameras" element={<CameraManagement />} />
           <Route path="cameras/:id" element={<CameraDetail />} />
           <Route path="cameras/:id/view" element={<CameraView />} />

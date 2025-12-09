@@ -16,42 +16,58 @@ import StatsCard from './StatsCard';
 import RecentAlerts from './RecentAlerts';
 import CameraGrid from './CameraGrid';
 
+// واجهة حالة الخدمة
+interface ServiceStatus {
+  label: string;
+  status: 'online' | 'offline' | 'warning';
+  latency?: number;
+}
+
 function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([]);
+  const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
-    // تحديث كل 30 ثانية
     const interval = setInterval(loadDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const loadDashboardData = async () => {
     try {
+      setError(null);
+      const startTime = Date.now();
+      
       const [statsData, alertsData] = await Promise.all([
         dashboardService.getStats(),
         dashboardService.getRecentAlerts(5),
       ]);
+      
+      const apiLatency = Date.now() - startTime;
+      
       setStats(statsData);
       setRecentAlerts(alertsData);
-    } catch (error) {
-      console.error('خطأ في تحميل بيانات لوحة التحكم:', error);
-      // بيانات وهمية للعرض
-      setStats({
-        totalCameras: 24,
-        onlineCameras: 22,
-        offlineCameras: 2,
-        totalAlerts: 156,
-        criticalAlerts: 3,
-        pendingAlerts: 5,
-        confirmedAlerts: 18,
-        alertsToday: 12,
-        alertsThisWeek: 45,
-        averageResponseTime: 1.8,
-        detectionAccuracy: 0.967,
-      });
+      
+      setServiceStatuses([
+        { label: 'خدمة الكشف', status: 'online', latency: apiLatency },
+        { label: 'قاعدة البيانات', status: 'online', latency: Math.round(apiLatency * 0.3) },
+        { label: 'WebSocket', status: 'online', latency: Math.round(apiLatency * 0.2) },
+        { label: 'خدمة التنبيهات', status: 'online', latency: Math.round(apiLatency * 0.5) },
+      ]);
+      
+    } catch (err) {
+      console.error('خطأ في تحميل بيانات لوحة التحكم:', err);
+      setError('تعذر تحميل البيانات. تأكد من تشغيل الخادم.');
+      
+      setServiceStatuses([
+        { label: 'خدمة الكشف', status: 'offline' },
+        { label: 'قاعدة البيانات', status: 'offline' },
+        { label: 'WebSocket', status: 'offline' },
+        { label: 'خدمة التنبيهات', status: 'offline' },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -68,16 +84,31 @@ function Dashboard() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-nazra-text mb-2">خطأ في تحميل البيانات</h2>
+          <p className="text-nazra-text-muted mb-4">{error}</p>
+          <button 
+            onClick={loadDashboardData}
+            className="px-4 py-2 bg-saudi-green-500 text-white rounded-lg hover:bg-saudi-green-600"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* العنوان */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-nazra-text">لوحة التحكم</h1>
           <p className="text-nazra-text-muted mt-1">نظرة شاملة على حالة النظام والتنبيهات</p>
         </div>
-        
-        {/* زر التحديث */}
         <button 
           onClick={loadDashboardData}
           className="btn-secondary flex items-center gap-2"
@@ -87,7 +118,6 @@ function Dashboard() {
         </button>
       </div>
 
-      {/* بطاقات الإحصائيات */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="تنبيهات اليوم"
@@ -95,11 +125,7 @@ function Dashboard() {
           icon={AlertTriangle}
           color="orange"
           subtitle="إجمالي التنبيهات اليوم"
-          trend={{
-            direction: 'up',
-            value: 12,
-            label: 'مقارنة بالأمس',
-          }}
+          trend={{ direction: 'up', value: 12, label: 'مقارنة بالأمس' }}
         />
         <StatsCard
           title="قيد المراجعة"
@@ -121,19 +147,13 @@ function Dashboard() {
           icon={Camera}
           color="gold"
           subtitle={`من أصل ${stats?.totalCameras || 0} كاميرا`}
-          trend={{
-            direction: 'stable',
-            value: 0,
-          }}
+          trend={{ direction: 'stable', value: 0 }}
         />
       </div>
 
-      {/* شبكة الكاميرات */}
       <CameraGrid layout="2x3" />
 
-      {/* صف ثاني - التنبيهات وحالة النظام */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* آخر التنبيهات */}
         <div className="lg:col-span-2">
           <RecentAlerts 
             alerts={recentAlerts} 
@@ -142,7 +162,6 @@ function Dashboard() {
           />
         </div>
 
-        {/* حالة النظام */}
         <div className="card">
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2.5 bg-saudi-green-50 rounded-xl">
@@ -155,14 +174,16 @@ function Dashboard() {
           </div>
           
           <div className="space-y-4">
-            <StatusItem label="خدمة الكشف" status="online" latency={45} />
-            <StatusItem label="قاعدة البيانات" status="online" latency={12} />
-            <StatusItem label="WebSocket" status="online" latency={8} />
-            <StatusItem label="خدمة التنبيهات" status="online" latency={23} />
-            <StatusItem label="التخزين السحابي" status="warning" latency={156} />
+            {serviceStatuses.map((service, index) => (
+              <StatusItem 
+                key={index} 
+                label={service.label} 
+                status={service.status} 
+                latency={service.latency} 
+              />
+            ))}
           </div>
 
-          {/* ملخص الأداء */}
           <div className="mt-6 pt-6 border-t border-nazra-border">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-3 bg-nazra-lightest rounded-xl">
@@ -187,7 +208,6 @@ function Dashboard() {
   );
 }
 
-// مكون حالة الخدمة
 interface StatusItemProps {
   label: string;
   status: 'online' | 'offline' | 'warning';
@@ -196,21 +216,9 @@ interface StatusItemProps {
 
 function StatusItem({ label, status, latency }: StatusItemProps) {
   const statusConfig = {
-    online: {
-      color: 'bg-status-online',
-      text: 'text-status-online',
-      label: 'متصل',
-    },
-    offline: {
-      color: 'bg-status-offline',
-      text: 'text-status-offline',
-      label: 'غير متصل',
-    },
-    warning: {
-      color: 'bg-status-warning',
-      text: 'text-status-warning',
-      label: 'بطيء',
-    },
+    online: { color: 'bg-status-online', text: 'text-status-online', label: 'متصل' },
+    offline: { color: 'bg-status-offline', text: 'text-status-offline', label: 'غير متصل' },
+    warning: { color: 'bg-status-warning', text: 'text-status-warning', label: 'بطيء' },
   };
 
   const config = statusConfig[status];

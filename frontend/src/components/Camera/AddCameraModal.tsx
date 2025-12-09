@@ -128,21 +128,39 @@ function AddCameraModal({ camera, onClose, onSave }: AddCameraModalProps) {
   const handleTestConnection = async () => {
     setConnectionTest({ status: 'testing' });
     
-    // محاكاة اختبار الاتصال
-    await new Promise(resolve => setTimeout(resolve, 2500));
-    
-    // نجاح عشوائي للمحاكاة
-    const success = Math.random() > 0.3;
-    
-    if (success) {
-      setConnectionTest({ 
-        status: 'success', 
-        message: 'تم الاتصال بنجاح! الكاميرا متصلة وتعمل.' 
+    try {
+      // بناء رابط RTSP
+      const rtspUrl = formData.connectionType === 'rtsp' 
+        ? formData.rtspUrl 
+        : `rtsp://${formData.onvifUsername}:${formData.onvifPassword}@${formData.onvifIp}:${formData.onvifPort}/stream1`;
+      
+      // استدعاء API لاختبار الاتصال
+      const response = await fetch('/api/cameras/test-connection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ rtspUrl }),
       });
-    } else {
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setConnectionTest({ 
+          status: 'success', 
+          message: `تم الاتصال بنجاح! الكاميرا متصلة وتعمل. (${result.resolution || '1920x1080'} @ ${result.fps || 30}fps)` 
+        });
+      } else {
+        setConnectionTest({ 
+          status: 'error', 
+          message: result.message || 'فشل الاتصال. تأكد من صحة البيانات وأن الكاميرا متصلة بالشبكة.' 
+        });
+      }
+    } catch (error) {
+      console.error('خطأ في اختبار الاتصال:', error);
       setConnectionTest({ 
         status: 'error', 
-        message: 'فشل الاتصال. تأكد من صحة البيانات وأن الكاميرا متصلة بالشبكة.' 
+        message: 'حدث خطأ أثناء اختبار الاتصال. تأكد من أن الخادم يعمل.' 
       });
     }
   };

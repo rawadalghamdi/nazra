@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Video,
@@ -20,6 +20,7 @@ import {
   Rows,
 } from 'lucide-react';
 import type { CameraCardData, GridLayout } from '../../types';
+import { cameraService } from '../../services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // واجهات المكون
@@ -45,19 +46,6 @@ interface FilterOptions {
   hasAlert: 'all' | 'yes' | 'no';
 }
 
-// بيانات وهمية للكاميرات
-const mockCameras: CameraCardData[] = [
-  { id: 'cam-1', name: 'المدخل الرئيسي', location: 'البوابة الأمامية', status: 'online', isRecording: true, resolution: '1080p', hasAlert: true, alertCount: 2 },
-  { id: 'cam-2', name: 'موقف السيارات', location: 'المنطقة A', status: 'online', isRecording: true, resolution: '1080p' },
-  { id: 'cam-3', name: 'البوابة الشرقية', location: 'المدخل الشرقي', status: 'online', isRecording: true, resolution: '720p' },
-  { id: 'cam-4', name: 'الردهة الرئيسية', location: 'الطابق الأرضي', status: 'offline', isRecording: false, resolution: '1080p' },
-  { id: 'cam-5', name: 'المخزن', location: 'الطابق السفلي', status: 'online', isRecording: true, resolution: '720p', hasAlert: true, alertCount: 1 },
-  { id: 'cam-6', name: 'البوابة الغربية', location: 'المدخل الغربي', status: 'online', isRecording: true, resolution: '1080p' },
-  { id: 'cam-7', name: 'السطح', location: 'الطابق العلوي', status: 'online', isRecording: true, resolution: '1080p' },
-  { id: 'cam-8', name: 'الاستقبال', location: 'الطابق الأرضي', status: 'online', isRecording: true, resolution: '720p', hasAlert: true, alertCount: 3 },
-  { id: 'cam-9', name: 'غرفة الاجتماعات', location: 'الطابق الثاني', status: 'offline', isRecording: false, resolution: '1080p' },
-];
-
 // خيارات التخطيط
 const layoutOptions: { value: GridLayout; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: '2x2', label: '2×2', icon: Grid2X2 },
@@ -67,7 +55,7 @@ const layoutOptions: { value: GridLayout; label: string; icon: React.ComponentTy
 ];
 
 function CameraGrid({ 
-  cameras = mockCameras, 
+  cameras: propCameras, 
   layout = '2x3',
   onCameraClick,
   onLayoutChange,
@@ -76,6 +64,7 @@ function CameraGrid({
   showFilters = true,
 }: CameraGridProps) {
   const navigate = useNavigate();
+  const [cameras, setCameras] = useState<CameraCardData[]>(propCameras || []);
   const [currentLayout, setCurrentLayout] = useState<GridLayout>(layout);
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
@@ -84,6 +73,45 @@ function CameraGrid({
     hasAlert: 'all',
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(!propCameras);
+
+  // جلب الكاميرات من API إذا لم يتم تمريرها كـ props
+  useEffect(() => {
+    if (!propCameras) {
+      fetchCameras();
+    }
+  }, [propCameras]);
+
+  // تحديث الكاميرات عند تغيير propCameras
+  useEffect(() => {
+    if (propCameras) {
+      setCameras(propCameras);
+    }
+  }, [propCameras]);
+
+  const fetchCameras = async () => {
+    setIsLoading(true);
+    try {
+      const data = await cameraService.getAll();
+      // تحويل البيانات لتتوافق مع CameraCardData
+      const cameraCardData: CameraCardData[] = data.map(cam => ({
+        id: cam.id,
+        name: cam.name,
+        location: cam.location,
+        status: cam.status as 'online' | 'offline',
+        isRecording: cam.isRecording,
+        resolution: cam.resolution,
+        hasAlert: false, // سيتم تحديثها من التنبيهات
+        alertCount: 0,
+      }));
+      setCameras(cameraCardData);
+    } catch (error) {
+      console.error('خطأ في جلب الكاميرات:', error);
+      setCameras([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // تصفية الكاميرات
   const filteredCameras = useMemo(() => {
@@ -107,7 +135,7 @@ function CameraGrid({
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await fetchCameras();
     setIsRefreshing(false);
   };
 
@@ -150,6 +178,20 @@ function CameraGrid({
   const onlineCameras = cameras.filter(c => c.status === 'online').length;
   const alertCameras = cameras.filter(c => c.hasAlert).length;
   const hasActiveFilters = searchQuery !== '' || filters.status !== 'all' || filters.hasAlert !== 'all';
+
+  // عرض حالة التحميل
+  if (isLoading) {
+    return (
+      <div className="card">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-saudi-green-500/30 border-t-saudi-green-500 rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-nazra-text-muted">جاري تحميل الكاميرات...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card">

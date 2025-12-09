@@ -22,6 +22,7 @@ from app.routers.alerts import router as alerts_router
 from app.routers.cameras import router as cameras_router
 from app.routers.stream import router as stream_router
 from app.routers.websocket import router as websocket_router
+from app.routers.dashboard import router as dashboard_router
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -172,6 +173,12 @@ app.include_router(
     stream_router,
     prefix=settings.API_V1_PREFIX,
     tags=["البث"]
+)
+
+app.include_router(
+    dashboard_router,
+    prefix=settings.API_V1_PREFIX + "/dashboard",
+    tags=["لوحة التحكم"]
 )
 
 # WebSocket

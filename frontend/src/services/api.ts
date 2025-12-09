@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { Camera, Alert, DashboardStats, SystemSettings } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 // إنشاء نسخة من axios
 const api = axios.create({
@@ -20,30 +20,62 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// تحويل البيانات من camelCase إلى snake_case للباك إند
+const transformCameraToBackend = (camera: Partial<Camera>) => {
+  return {
+    name: camera.name,
+    location: camera.location,
+    rtsp_url: camera.rtspUrl,
+    detection_enabled: camera.detectionEnabled,
+    sensitivity: camera.sensitivity !== undefined ? camera.sensitivity / 100 : undefined, // تحويل من 0-100 إلى 0-1
+  };
+};
+
+// تحويل البيانات من snake_case إلى camelCase للفرونت إند
+const transformCameraFromBackend = (data: any): Camera => {
+  return {
+    id: data.id,
+    name: data.name,
+    location: data.location,
+    rtspUrl: data.rtsp_url,
+    status: data.status,
+    isRecording: data.is_recording,
+    detectionEnabled: data.detection_enabled,
+    sensitivity: Math.round(data.sensitivity * 100), // تحويل من 0-1 إلى 0-100
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    lastDetection: data.last_seen,
+    resolution: data.resolution,
+    fps: data.fps,
+  };
+};
+
 // خدمات الكاميرات
 export const cameraService = {
   // جلب جميع الكاميرات
   getAll: async (): Promise<Camera[]> => {
     const response = await api.get('/cameras');
-    return response.data;
+    return response.data.map(transformCameraFromBackend);
   },
 
   // جلب كاميرا محددة
   getById: async (id: string): Promise<Camera> => {
     const response = await api.get(`/cameras/${id}`);
-    return response.data;
+    return transformCameraFromBackend(response.data);
   },
 
   // إضافة كاميرا جديدة
   create: async (camera: Partial<Camera>): Promise<Camera> => {
-    const response = await api.post('/cameras', camera);
-    return response.data;
+    const payload = transformCameraToBackend(camera);
+    const response = await api.post('/cameras', payload);
+    return transformCameraFromBackend(response.data);
   },
 
   // تحديث كاميرا
   update: async (id: string, camera: Partial<Camera>): Promise<Camera> => {
-    const response = await api.put(`/cameras/${id}`, camera);
-    return response.data;
+    const payload = transformCameraToBackend(camera);
+    const response = await api.put(`/cameras/${id}`, payload);
+    return transformCameraFromBackend(response.data);
   },
 
   // حذف كاميرا
@@ -259,6 +291,65 @@ export const dashboardService = {
     const response = await api.get('/dashboard/recent-alerts', {
       params: { limit },
     });
+    // تحويل البيانات من الباك إند للفرونت إند
+    return response.data.map((alert: any) => transformAlertFromBackend(alert));
+  },
+};
+
+// تحويل بيانات التنبيه من الباك إند
+const transformAlertFromBackend = (data: any): Alert => {
+  // خريطة تحويل الخطورة من العربية للإنجليزية
+  const severityMap: Record<string, string> = {
+    'حرج': 'critical',
+    'عالي': 'high',
+    'متوسط': 'medium',
+    'منخفض': 'low',
+    'critical': 'critical',
+    'high': 'high',
+    'medium': 'medium',
+    'low': 'low',
+  };
+
+  // خريطة تحويل نوع السلاح لنوع الكشف
+  const weaponToDetectionType: Record<string, string> = {
+    'مسدس': 'weapon',
+    'بندقية': 'weapon',
+    'سكين': 'knife',
+    'أخرى': 'suspicious_object',
+    'pistol': 'weapon',
+    'rifle': 'weapon',
+    'knife': 'knife',
+    'other': 'suspicious_object',
+  };
+
+  return {
+    id: data.id,
+    cameraId: data.camera_id,
+    cameraName: data.camera_name || 'كاميرا غير معروفة',
+    location: data.location || '',
+    timestamp: data.timestamp,
+    weaponType: data.weapon_type || 'مسدس',
+    detectionType: (weaponToDetectionType[data.weapon_type] || 'weapon') as any,
+    severity: (severityMap[data.severity] || 'high') as any,
+    status: data.status || 'جديد',
+    confidence: Math.round((data.confidence || 0) * 100),
+    imageSnapshot: data.image_snapshot || data.image_url || '',
+    videoClip: data.video_clip || data.video_clip_url || '',
+    boundingBox: data.bounding_box || { x: 0, y: 0, width: 0, height: 0 },
+  };
+};
+
+// خدمات حالة النظام
+export const systemService = {
+  // فحص حالة الخادم
+  getHealth: async (): Promise<{
+    status: string;
+    service: string;
+    version: string;
+    timestamp: string;
+  }> => {
+    // استخدام /api/health بدلاً من /health لأنه خارج prefix
+    const response = await api.get('/health', { baseURL: '/api' });
     return response.data;
   },
 };

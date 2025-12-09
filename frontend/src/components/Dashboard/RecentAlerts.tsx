@@ -63,66 +63,6 @@ const severityStyles: Record<AlertSeverity, { bg: string; border: string; text: 
   },
 };
 
-// بيانات وهمية للعرض
-const mockAlerts: Alert[] = [
-  {
-    id: '1',
-    cameraId: 'cam-1',
-    cameraName: 'المدخل الرئيسي',
-    timestamp: new Date(Date.now() - 5 * 60000).toISOString(),
-    detectionType: 'weapon',
-    weaponType: 'مسدس',
-    severity: 'critical',
-    status: 'جديد',
-    confidence: 95,
-    location: 'البوابة الأمامية',
-    imageSnapshot: '',
-    boundingBox: { x: 0, y: 0, width: 0, height: 0 },
-  },
-  {
-    id: '2',
-    cameraId: 'cam-3',
-    cameraName: 'موقف السيارات',
-    timestamp: new Date(Date.now() - 15 * 60000).toISOString(),
-    detectionType: 'knife',
-    weaponType: 'سكين',
-    severity: 'high',
-    status: 'قيد المراجعة',
-    confidence: 88,
-    location: 'المنطقة A',
-    imageSnapshot: '',
-    boundingBox: { x: 0, y: 0, width: 0, height: 0 },
-  },
-  {
-    id: '3',
-    cameraId: 'cam-5',
-    cameraName: 'البوابة الشرقية',
-    timestamp: new Date(Date.now() - 45 * 60000).toISOString(),
-    detectionType: 'suspicious_object',
-    weaponType: 'مسدس',
-    severity: 'medium',
-    status: 'مؤكد',
-    confidence: 72,
-    location: 'المدخل الشرقي',
-    imageSnapshot: '',
-    boundingBox: { x: 0, y: 0, width: 0, height: 0 },
-  },
-  {
-    id: '4',
-    cameraId: 'cam-2',
-    cameraName: 'الردهة الرئيسية',
-    timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),
-    detectionType: 'weapon',
-    weaponType: 'مسدس',
-    severity: 'critical',
-    status: 'إنذار كاذب',
-    confidence: 65,
-    location: 'الطابق الأرضي',
-    imageSnapshot: '',
-    boundingBox: { x: 0, y: 0, width: 0, height: 0 },
-  },
-];
-
 function RecentAlerts({ 
   alerts = [], 
   maxItems = 5,
@@ -130,8 +70,8 @@ function RecentAlerts({
   onAlertClick,
   onViewAll,
 }: RecentAlertsProps) {
-  // استخدام البيانات الوهمية إذا لم تكن هناك بيانات
-  const displayAlerts = alerts.length > 0 ? alerts.slice(0, maxItems) : mockAlerts.slice(0, maxItems);
+  // عرض التنبيهات المُمررة فقط
+  const displayAlerts = alerts.slice(0, maxItems);
 
   return (
     <div className="card h-full">

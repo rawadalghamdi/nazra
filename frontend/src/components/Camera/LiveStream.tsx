@@ -80,10 +80,10 @@ function LiveStream({
   const [zoom, setZoom] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [streamStats, setStreamStats] = useState<StreamStats>({
-    fps: camera.fps || 30,
-    bitrate: '2.5 Mbps',
-    latency: 45,
-    quality: 'جيدة',
+    fps: camera.fps || 0,
+    bitrate: '-',
+    latency: 0,
+    quality: 'متوسطة',
   });
   const [connectionRetries, setConnectionRetries] = useState(0);
 

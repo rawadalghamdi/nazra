@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Video,
@@ -22,91 +22,14 @@ import {
 } from 'lucide-react';
 import type { Camera } from '../../types';
 import AddCameraModal from './AddCameraModal';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// بيانات وهمية
-// ═══════════════════════════════════════════════════════════════════════════
-const mockCameras: Camera[] = [
-  {
-    id: 'cam-1',
-    name: 'كاميرا البوابة الرئيسية',
-    location: 'المدخل الشمالي',
-    rtspUrl: 'rtsp://192.168.1.100:554/stream1',
-    status: 'online',
-    isRecording: true,
-    lastDetection: '2024-03-15T10:30:00',
-    detectionEnabled: true,
-    sensitivity: 75,
-    resolution: '1920x1080',
-    fps: 30,
-    createdAt: '2024-01-01T00:00:00',
-    updatedAt: '2024-03-15T10:30:00',
-  },
-  {
-    id: 'cam-2',
-    name: 'كاميرا موقف السيارات',
-    location: 'المنطقة A',
-    rtspUrl: 'rtsp://192.168.1.101:554/stream1',
-    status: 'online',
-    isRecording: true,
-    detectionEnabled: true,
-    sensitivity: 80,
-    resolution: '1920x1080',
-    fps: 30,
-    createdAt: '2024-01-05T00:00:00',
-    updatedAt: '2024-03-10T14:20:00',
-  },
-  {
-    id: 'cam-3',
-    name: 'كاميرا الممر الشرقي',
-    location: 'المدخل الشرقي',
-    rtspUrl: 'rtsp://192.168.1.102:554/stream1',
-    status: 'offline',
-    isRecording: false,
-    detectionEnabled: true,
-    sensitivity: 70,
-    resolution: '1280x720',
-    fps: 25,
-    createdAt: '2024-02-01T00:00:00',
-    updatedAt: '2024-03-01T08:00:00',
-  },
-  {
-    id: 'cam-4',
-    name: 'كاميرا الردهة',
-    location: 'الطابق الأرضي',
-    rtspUrl: 'rtsp://192.168.1.103:554/stream1',
-    status: 'error',
-    isRecording: false,
-    detectionEnabled: false,
-    sensitivity: 65,
-    resolution: '1920x1080',
-    fps: 30,
-    createdAt: '2024-02-15T00:00:00',
-    updatedAt: '2024-03-14T16:45:00',
-  },
-  {
-    id: 'cam-5',
-    name: 'كاميرا المخزن',
-    location: 'الطابق السفلي',
-    rtspUrl: 'rtsp://192.168.1.104:554/stream1',
-    status: 'online',
-    isRecording: true,
-    lastDetection: '2024-03-15T09:15:00',
-    detectionEnabled: true,
-    sensitivity: 85,
-    resolution: '1280x720',
-    fps: 20,
-    createdAt: '2024-01-20T00:00:00',
-    updatedAt: '2024-03-15T09:15:00',
-  },
-];
+import { cameraService } from '../../services/api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // المكون الرئيسي
 // ═══════════════════════════════════════════════════════════════════════════
 function CameraManagement() {
   const navigate = useNavigate();
-  const [cameras, setCameras] = useState<Camera[]>(mockCameras);
+  const [cameras, setCameras] = useState<Camera[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'online' | 'offline' | 'error'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -115,6 +38,28 @@ function CameraManagement() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showActionsMenu, setShowActionsMenu] = useState<string | null>(null);
   const [testingConnection, setTestingConnection] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // جلب الكاميرات من الخادم
+  // ─────────────────────────────────────────────────────────────────────────────
+  const fetchCameras = async () => {
+    try {
+      setError(null);
+      const data = await cameraService.getAll();
+      setCameras(data);
+    } catch (err) {
+      console.error('خطأ في جلب الكاميرات:', err);
+      setError('حدث خطأ أثناء جلب الكاميرات');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCameras();
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // تصفية الكاميرات
@@ -146,19 +91,43 @@ function CameraManagement() {
   // ─────────────────────────────────────────────────────────────────────────────
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await fetchCameras();
     setIsRefreshing(false);
   };
 
   const handleTestConnection = async (cameraId: string) => {
     setTestingConnection(cameraId);
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const camera = cameras.find(c => c.id === cameraId);
+      if (camera) {
+        const response = await fetch('/api/cameras/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rtspUrl: camera.rtspUrl }),
+        });
+        const result = await response.json();
+        if (result.success) {
+          // تحديث حالة الكاميرا محلياً
+          setCameras(prev => prev.map(c => 
+            c.id === cameraId ? { ...c, status: 'online' } : c
+          ));
+        }
+      }
+    } catch (err) {
+      console.error('خطأ في اختبار الاتصال:', err);
+    }
     setTestingConnection(null);
   };
 
-  const handleDeleteCamera = (cameraId: string) => {
+  const handleDeleteCamera = async (cameraId: string) => {
     if (window.confirm('هل أنت متأكد من حذف هذه الكاميرا؟')) {
-      setCameras(prev => prev.filter(c => c.id !== cameraId));
+      try {
+        await cameraService.delete(cameraId);
+        setCameras(prev => prev.filter(c => c.id !== cameraId));
+      } catch (err) {
+        console.error('خطأ في حذف الكاميرا:', err);
+        alert('حدث خطأ أثناء حذف الكاميرا');
+      }
     }
   };
 
@@ -182,39 +151,42 @@ function CameraManagement() {
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (window.confirm(`هل أنت متأكد من حذف ${selectedCameras.length} كاميرا؟`)) {
-      setCameras(prev => prev.filter(c => !selectedCameras.includes(c.id)));
-      setSelectedCameras([]);
+      try {
+        await Promise.all(selectedCameras.map(id => cameraService.delete(id)));
+        setCameras(prev => prev.filter(c => !selectedCameras.includes(c.id)));
+        setSelectedCameras([]);
+      } catch (err) {
+        console.error('خطأ في حذف الكاميرات:', err);
+        alert('حدث خطأ أثناء حذف بعض الكاميرات');
+      }
     }
   };
 
-  const handleAddCamera = (camera: Partial<Camera>) => {
-    const newCamera: Camera = {
-      id: `cam-${Date.now()}`,
-      name: camera.name || '',
-      location: camera.location || '',
-      rtspUrl: camera.rtspUrl || '',
-      status: 'offline',
-      isRecording: false,
-      detectionEnabled: true,
-      sensitivity: 75,
-      resolution: '1920x1080',
-      fps: 30,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...camera,
-    };
-    setCameras(prev => [...prev, newCamera]);
-    setShowAddModal(false);
+  const handleAddCamera = async (camera: Partial<Camera>) => {
+    try {
+      const newCamera = await cameraService.create(camera);
+      setCameras(prev => [...prev, newCamera]);
+      setShowAddModal(false);
+    } catch (err) {
+      console.error('خطأ في إضافة الكاميرا:', err);
+      alert('حدث خطأ أثناء إضافة الكاميرا');
+    }
   };
 
-  const handleEditCamera = (camera: Partial<Camera>) => {
+  const handleEditCamera = async (camera: Partial<Camera>) => {
     if (editingCamera) {
-      setCameras(prev => prev.map(c => 
-        c.id === editingCamera.id ? { ...c, ...camera, updatedAt: new Date().toISOString() } : c
-      ));
-      setEditingCamera(null);
+      try {
+        const updatedCamera = await cameraService.update(editingCamera.id, camera);
+        setCameras(prev => prev.map(c => 
+          c.id === editingCamera.id ? updatedCamera : c
+        ));
+        setEditingCamera(null);
+      } catch (err) {
+        console.error('خطأ في تحديث الكاميرا:', err);
+        alert('حدث خطأ أثناء تحديث الكاميرا');
+      }
     }
   };
 
@@ -241,6 +213,37 @@ function CameraManagement() {
   // ═══════════════════════════════════════════════════════════════════════════
   // العرض
   // ═══════════════════════════════════════════════════════════════════════════
+  
+  // عرض حالة التحميل
+  if (isLoading) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="w-8 h-8 text-saudi-green-500 animate-spin" />
+          <p className="text-nazra-text-muted">جاري تحميل الكاميرات...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // عرض حالة الخطأ
+  if (error) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <XCircle className="w-8 h-8 text-red-500" />
+          <p className="text-red-600">{error}</p>
+          <button
+            onClick={fetchCameras}
+            className="px-4 py-2 bg-saudi-green-500 text-white rounded-lg hover:bg-saudi-green-600"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* العنوان والإحصائيات */}
