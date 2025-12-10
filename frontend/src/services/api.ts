@@ -369,4 +369,109 @@ export const settingsService = {
   },
 };
 
+// خدمات الكشف
+export interface DetectionResult {
+  success: boolean;
+  timestamp: string;
+  processing_time_ms: number;
+  image_info: {
+    filename: string;
+    width: number;
+    height: number;
+    channels: number;
+  };
+  detection_summary: {
+    total_detections: number;
+    weapons_found: number;
+    knives_found: number;
+    has_critical: boolean;
+    has_high: boolean;
+  };
+  detections: Array<{
+    id: string;
+    class_name: string;
+    class_name_ar: string;
+    confidence: number;
+    confidence_raw: number;
+    bbox: {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      width: number;
+      height: number;
+    };
+    detection_type: string;
+    severity: string;
+    severity_ar: string;
+  }>;
+  annotated_image: string;
+}
+
+export interface DetectionStatus {
+  success: boolean;
+  model_loaded: boolean;
+  model_path: string;
+  device: string;
+  confidence_threshold: number;
+  statistics: {
+    total_frames: number;
+    total_detections: number;
+    average_time_ms: number;
+    last_detection: string | null;
+  };
+  supported_classes: string[];
+  timestamp: string;
+}
+
+export const detectionService = {
+  // الحصول على حالة نموذج الكشف
+  getStatus: async (): Promise<DetectionStatus> => {
+    const response = await api.get('/detection/status');
+    return response.data;
+  },
+
+  // اختبار الكشف على صورة
+  testImage: async (file: File): Promise<DetectionResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/detection/test', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
+  // اختبار الكشف وإرجاع الصورة مباشرة
+  testImageReturnImage: async (file: File): Promise<Blob> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/detection/test/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  // الحصول على الفئات المدعومة
+  getClasses: async (): Promise<{
+    success: boolean;
+    total_classes: number;
+    classes: Array<{
+      class_name: string;
+      class_name_ar: string;
+      detection_type: string;
+      severity: string;
+    }>;
+  }> => {
+    const response = await api.get('/detection/classes');
+    return response.data;
+  },
+};
+
 export default api;

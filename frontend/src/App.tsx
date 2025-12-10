@@ -11,6 +11,7 @@ import LiveStreamPage from './components/Camera/LiveStreamPage'
 import AlertsList from './components/Alerts/AlertsList'
 import Settings from './components/Settings/Settings'
 import ReportsPage from './components/Reports/ReportsPage'
+import { DetectionTestPage, VideoTestPage } from './components/Detection'
 
 const App: React.FC = () => {
   return (
@@ -35,6 +36,8 @@ const App: React.FC = () => {
           <Route path="cameras/:id/view" element={<CameraView />} />
           <Route path="alerts" element={<AlertsList />} />
           <Route path="reports" element={<ReportsPage />} />
+          <Route path="detection" element={<DetectionTestPage />} />
+          <Route path="detection/video" element={<VideoTestPage />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

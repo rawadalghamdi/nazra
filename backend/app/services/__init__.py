@@ -1,3 +1,5 @@
 from .database import get_db, init_db
 from .detection import detector, WeaponDetector
-from .video_processor import video_processor, VideoProcessor
+from .detection_pipeline import get_pipeline, start_pipeline, stop_pipeline
+from .detector import get_detector
+from .notification import get_notification_service

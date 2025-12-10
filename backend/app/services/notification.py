@@ -207,16 +207,22 @@ class NotificationService:
     async def _send_email(self, notification: Notification) -> bool:
         """
         إرسال بريد إلكتروني
+        
+        ملاحظة: يتطلب تكامل مع خدمة SMTP أو SendGrid أو ما شابه
+        يمكن تفعيله بإضافة إعدادات SMTP في config.py
         """
-        # TODO: تنفيذ إرسال البريد الإلكتروني
+        # للتفعيل: أضف إعدادات SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD
         logger.info(f"📧 إرسال بريد إلكتروني: {notification.title}")
         return True
     
     async def _send_sms(self, notification: Notification) -> bool:
         """
         إرسال رسالة نصية
+        
+        ملاحظة: يتطلب تكامل مع خدمة SMS مثل Twilio أو Unifonic
+        يمكن تفعيله بإضافة إعدادات SMS في config.py
         """
-        # TODO: تنفيذ إرسال الرسائل النصية
+        # للتفعيل: أضف إعدادات SMS_API_KEY, SMS_SENDER
         logger.info(f"📱 إرسال رسالة نصية: {notification.title}")
         return True
     

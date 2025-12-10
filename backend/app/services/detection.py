@@ -60,9 +60,9 @@ class WeaponDetector:
     
     def __init__(
         self,
-        model_path: str = "./models/yolo11_weapons.pt",
-        confidence_threshold: float = 0.7,
-        device: str = "auto"
+        model_path: str = "/app/models/best.pt",  # نموذج Absher
+        confidence_threshold: float = 0.5,
+        device: str = "cpu"
     ):
         """
         تهيئة محرك الكشف

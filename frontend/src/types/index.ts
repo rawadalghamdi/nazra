@@ -169,6 +169,7 @@ export interface CameraCardData {
   isRecording: boolean;
   thumbnail?: string;
   resolution?: string;
+  rtspUrl?: string;
   hasAlert?: boolean;
   alertCount?: number;
   lastActivity?: string;

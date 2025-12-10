@@ -208,21 +208,36 @@ function LiveStream({
     };
   }, [isPlaying, detections, drawDetections]);
 
-  // محاكاة إحصائيات البث
+  // محاكاة إحصائيات البث - تم استبدالها بـ API حقيقي
   useEffect(() => {
-    const interval = setInterval(() => {
+    const fetchStreamStats = async () => {
       if (isOnline && isPlaying) {
-        setStreamStats({
-          fps: Math.floor(28 + Math.random() * 4),
-          bitrate: `${(2.0 + Math.random() * 1).toFixed(1)} Mbps`,
-          latency: Math.floor(30 + Math.random() * 30),
-          quality: Math.random() > 0.2 ? 'جيدة' : 'متوسطة',
-        });
+        try {
+          const response = await fetch(`/api/v1/cameras/${camera.id}/status`);
+          if (response.ok) {
+            const data = await response.json();
+            setStreamStats({
+              fps: data.fps || camera.fps || 0,
+              bitrate: '-',
+              latency: data.latency || 0,
+              quality: data.latency ? (data.latency < 100 ? 'جيدة' : data.latency < 300 ? 'متوسطة' : 'ضعيفة') : 'متوسطة',
+            });
+          }
+        } catch (error) {
+          // استخدام القيم الافتراضية في حالة الخطأ
+          setStreamStats(prev => ({
+            ...prev,
+            fps: camera.fps || 0,
+          }));
+        }
       }
-    }, 2000);
+    };
+    
+    fetchStreamStats();
+    const interval = setInterval(fetchStreamStats, 5000);
 
     return () => clearInterval(interval);
-  }, [isOnline, isPlaying]);
+  }, [isOnline, isPlaying, camera.id, camera.fps]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // معالجات الأحداث

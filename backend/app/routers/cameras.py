@@ -93,6 +93,8 @@ async def test_rtsp_connection(data: dict):
     
     يختبر إمكانية الاتصال برابط RTSP المُعطى
     """
+    import cv2
+    
     rtsp_url = data.get("rtspUrl") or data.get("rtsp_url")
     
     if not rtsp_url:
@@ -104,16 +106,35 @@ async def test_rtsp_connection(data: dict):
     logger.info(f"🧪 اختبار اتصال RTSP: {rtsp_url[:50]}...")
     
     try:
-        # محاكاة اختبار الاتصال - في الإنتاج يتم استخدام OpenCV
-        await asyncio.sleep(0.5)
+        # اختبار الاتصال الفعلي باستخدام OpenCV
+        cap = cv2.VideoCapture(rtsp_url)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         
-        # نجاح الاتصال (محاكاة)
-        return {
-            "success": True,
-            "message": "تم الاتصال بنجاح",
-            "resolution": "1920x1080",
-            "fps": 30
-        }
+        # محاولة قراءة إطار واحد
+        ret, frame = cap.read()
+        
+        if ret and frame is not None:
+            # الحصول على معلومات الكاميرا
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = int(cap.get(cv2.CAP_PROP_FPS)) or 30
+            
+            cap.release()
+            
+            logger.info(f"✅ نجح اتصال الكاميرا: {width}x{height} @ {fps}fps")
+            return {
+                "success": True,
+                "message": "تم الاتصال بنجاح",
+                "resolution": f"{width}x{height}",
+                "fps": fps
+            }
+        else:
+            cap.release()
+            logger.warning(f"⚠️ لم يتم استلام إطارات من الكاميرا")
+            return {
+                "success": False,
+                "message": "لم يتم استلام إطارات من الكاميرا. تأكد من صحة الرابط."
+            }
         
     except Exception as e:
         logger.error(f"❌ فشل اختبار الاتصال: {e}")
@@ -137,10 +158,19 @@ async def create_camera(camera_data: CameraCreate, db: AsyncSession = Depends(ge
         initial_status = "offline"
         if camera_data.rtsp_url:
             try:
-                # محاولة اختبار الاتصال
-                await asyncio.sleep(0.3)  # محاكاة اختبار
-                initial_status = "online"  # إذا نجح الاختبار
-                logger.info(f"✅ نجح اختبار الاتصال المبدئي")
+                # اختبار الاتصال الفعلي باستخدام OpenCV
+                import cv2
+                cap = cv2.VideoCapture(camera_data.rtsp_url)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                ret, frame = cap.read()
+                cap.release()
+                
+                if ret and frame is not None:
+                    initial_status = "online"
+                    logger.info(f"✅ نجح اختبار الاتصال المبدئي")
+                else:
+                    initial_status = "offline"
+                    logger.warning(f"⚠️ لم يتم استلام إطارات من الكاميرا")
             except Exception as e:
                 logger.warning(f"⚠️ فشل اختبار الاتصال المبدئي: {e}")
                 initial_status = "offline"
@@ -291,33 +321,55 @@ async def test_camera(camera_id: str, db: AsyncSession = Depends(get_db)):
     try:
         start_time = datetime.utcnow()
         
-        # TODO: تنفيذ اختبار RTSP الفعلي
-        # هنا نستخدم اختبار محاكي
         if camera.rtsp_url:
-            # محاكاة اختبار الاتصال
-            await asyncio.sleep(0.5)  # محاكاة زمن الاتصال
+            # اختبار الاتصال الفعلي باستخدام OpenCV
+            import cv2
+            cap = cv2.VideoCapture(camera.rtsp_url)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
-            latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            ret, frame = cap.read()
             
-            # تحديث حالة الكاميرا
-            camera.status = "online"
-            camera.last_seen = datetime.utcnow()
-            await db.commit()
-            
-            logger.info(f"✅ اختبار الكاميرا نجح: {camera_id}")
-            
-            return CameraTestResult(
-                success=True,
-                message="تم الاتصال بالكاميرا بنجاح",
-                latency_ms=latency_ms,
-                resolution="1920x1080",
-                fps=30.0,
-                details={
-                    "codec": "H.264",
-                    "audio": False,
-                    "rtsp_url": camera.rtsp_url
-                }
-            )
+            if ret and frame is not None:
+                # الحصول على معلومات الكاميرا الفعلية
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+                
+                cap.release()
+                
+                latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+                
+                # تحديث حالة الكاميرا
+                camera.status = "online"
+                camera.last_seen = datetime.utcnow()
+                await db.commit()
+                
+                logger.info(f"✅ اختبار الكاميرا نجح: {camera_id}")
+                
+                return CameraTestResult(
+                    success=True,
+                    message="تم الاتصال بالكاميرا بنجاح",
+                    latency_ms=latency_ms,
+                    resolution=f"{width}x{height}",
+                    fps=fps,
+                    details={
+                        "codec": "H.264",
+                        "audio": False,
+                        "rtsp_url": camera.rtsp_url
+                    }
+                )
+            else:
+                cap.release()
+                
+                # تحديث حالة الكاميرا
+                camera.status = "offline"
+                await db.commit()
+                
+                return CameraTestResult(
+                    success=False,
+                    message="لم يتم استلام إطارات من الكاميرا",
+                    details={"error": "No frames received"}
+                )
         else:
             return CameraTestResult(
                 success=False,
@@ -371,6 +423,22 @@ async def get_camera_status(camera_id: str, db: AsyncSession = Depends(get_db)):
     )
     last_detection = last_detection_result.scalar_one_or_none()
     
+    # حساب زمن التأخير الفعلي
+    latency_ms = None
+    if camera.status == "online" and camera.rtsp_url:
+        try:
+            import cv2
+            import time
+            start = time.time()
+            cap = cv2.VideoCapture(camera.rtsp_url)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            ret, _ = cap.read()
+            cap.release()
+            if ret:
+                latency_ms = int((time.time() - start) * 1000)
+        except Exception:
+            pass
+    
     return CameraStatus(
         id=camera.id,
         name=camera.name,
@@ -378,7 +446,7 @@ async def get_camera_status(camera_id: str, db: AsyncSession = Depends(get_db)):
         is_recording=camera.is_recording,
         detection_enabled=camera.detection_enabled,
         fps=camera.fps if camera.status == "online" else None,
-        latency=None,  # TODO: حساب زمن التأخير الفعلي
+        latency=latency_ms,
         last_detection=last_detection
     )
 

@@ -23,6 +23,8 @@ from app.routers.cameras import router as cameras_router
 from app.routers.stream import router as stream_router
 from app.routers.websocket import router as websocket_router
 from app.routers.dashboard import router as dashboard_router
+from app.routers.detection import router as detection_router
+from app.routers.live_stream import router as live_stream_router
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -60,11 +62,10 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("✅ تم تهيئة قاعدة البيانات")
     
-    # إضافة بيانات تجريبية (في وضع التطوير)
-    if settings.DEBUG:
-        await seed_demo_data()
+    # ملاحظة: تم إلغاء البيانات التجريبية - النظام يعمل مع بيانات حقيقية فقط
+    # لإضافة بيانات تجريبية: await seed_demo_data()
     
-    # تحميل نموذج الكشف (اختياري)
+    # تحميل نموذج الكشف
     try:
         from app.services.detector import get_detector
         detector = await get_detector()
@@ -74,6 +75,60 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠️ نموذج الكشف غير متوفر")
     except Exception as e:
         logger.warning(f"⚠️ تعذر تحميل نموذج الكشف: {e}")
+    
+    # === بدء Detection Pipeline المحسّن ===
+    try:
+        from app.services.detection_pipeline import start_pipeline, get_pipeline
+        from app.routers.websocket import push_detection_result
+        from app.database import AsyncSessionLocal
+        from sqlalchemy import select
+        from app.models.camera import Camera
+        
+        # بدء Pipeline
+        pipeline = await start_pipeline()
+        
+        # ربط callback لبث النتائج عبر WebSocket
+        async def on_pipeline_result(result):
+            """إرسال نتائج الكشف عبر WebSocket"""
+            try:
+                result_dict = {
+                    "camera_id": result.camera_id,
+                    "detections": result.detections,
+                    "processing_time_ms": result.processing_time_ms,
+                    "frame_size": result.frame_size
+                }
+                await push_detection_result(result_dict)
+                
+                # تسجيل الكشوفات المهمة
+                if result.detections:
+                    logger.info(f"🎯 كشف {len(result.detections)} كائن في {result.camera_id}")
+            except Exception as e:
+                logger.error(f"❌ خطأ في بث الكشف: {e}")
+        
+        pipeline.add_result_callback(on_pipeline_result)
+        
+        # إضافة الكاميرات المتصلة للـ Pipeline
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(Camera).where(Camera.status == "online", Camera.detection_enabled == True)
+            )
+            cameras = result.scalars().all()
+            
+            for camera in cameras:
+                if camera.rtsp_url:
+                    await pipeline.add_camera(
+                        camera_id=str(camera.id),
+                        stream_url=camera.rtsp_url
+                    )
+            
+            logger.info(f"🔍 Pipeline: {len(cameras)} كاميرا نشطة")
+        
+        logger.info("✅ Detection Pipeline جاهز")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ تعذر بدء Detection Pipeline: {e}")
+        import traceback
+        traceback.print_exc()
     
     logger.info("=" * 50)
     logger.info("✅ نظام نظرة جاهز للعمل!")
@@ -87,6 +142,14 @@ async def lifespan(app: FastAPI):
     # ===============================
     logger.info("=" * 50)
     logger.info("👋 جاري إيقاف نظام نظرة...")
+    
+    # إيقاف Detection Pipeline
+    try:
+        from app.services.detection_pipeline import stop_pipeline
+        await stop_pipeline()
+        logger.info("⏹️ تم إيقاف Detection Pipeline")
+    except Exception:
+        pass
     
     # إيقاف محرك الكشف
     try:
@@ -179,6 +242,19 @@ app.include_router(
     dashboard_router,
     prefix=settings.API_V1_PREFIX + "/dashboard",
     tags=["لوحة التحكم"]
+)
+
+app.include_router(
+    detection_router,
+    prefix=settings.API_V1_PREFIX,
+    tags=["الكشف"]
+)
+
+# البث الحي مع الكاميرات المتعددة
+app.include_router(
+    live_stream_router,
+    prefix=settings.API_V1_PREFIX,
+    tags=["البث الحي"]
 )
 
 # WebSocket

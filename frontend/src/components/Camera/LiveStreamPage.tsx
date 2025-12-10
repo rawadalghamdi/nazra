@@ -8,10 +8,10 @@ import {
   Square,
   RefreshCw,
   Settings,
-  Eye,
 } from 'lucide-react';
 import { cameraService } from '../../services/api';
 import type { Camera } from '../../types';
+import { StreamWithDetection } from './StreamWithDetection';
 
 // أنماط عرض الشبكة
 type GridLayout = '1x1' | '2x2' | '3x3' | '4x4';
@@ -187,34 +187,37 @@ interface CameraStreamCardProps {
 
 function CameraStreamCard({ camera, onFullscreen }: CameraStreamCardProps) {
   const isOnline = camera.status === 'online';
+  const [hasError, setHasError] = useState(false);
+  
+  // استخدام رابط الكاميرا مباشرة إذا كان HTTP (أسرع)
+  const rtspUrl = (camera as any).rtspUrl || (camera as any).rtsp_url || '';
+  const isDirectHttp = rtspUrl.startsWith('http://') || rtspUrl.startsWith('https://');
+  const streamUrl = isDirectHttp ? rtspUrl : `http://localhost:8000/api/v1/stream/${camera.id}`;
 
   return (
     <div className="card p-0 overflow-hidden group">
       {/* منطقة الفيديو */}
       <div className="relative aspect-video bg-gray-900">
-        {isOnline ? (
+        {isOnline && !hasError ? (
           <>
-            {/* محاكاة البث - في الإنتاج سيكون هنا مشغل فيديو حقيقي */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-16 h-16 border-4 border-saudi-green-500/30 border-t-saudi-green-500 rounded-full animate-spin mx-auto mb-3"></div>
-                <p className="text-white/70 text-sm">جاري البث...</p>
-              </div>
-            </div>
+            {/* بث الفيديو مع طبقة الكشف */}
+            <StreamWithDetection
+              cameraId={camera.id}
+              streamUrl={streamUrl}
+              className="w-full h-full"
+              showDetectionInfo={true}
+              onDetection={(detections) => {
+                if (detections.length > 0) {
+                  console.log(`🚨 تم الكشف عن ${detections.length} تهديد(ات) في ${camera.name}`);
+                }
+              }}
+            />
 
             {/* مؤشر البث المباشر */}
             <div className="absolute top-3 right-3 flex items-center gap-2 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-full">
               <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
               <span className="text-white text-xs font-medium">مباشر</span>
             </div>
-
-            {/* مؤشر الكشف */}
-            {camera.detectionEnabled && (
-              <div className="absolute top-3 left-3 flex items-center gap-1 bg-saudi-green-500/80 backdrop-blur-sm px-2 py-1 rounded-full">
-                <Eye className="w-3 h-3 text-white" />
-                <span className="text-white text-xs">الكشف مفعّل</span>
-              </div>
-            )}
 
             {/* أزرار التحكم */}
             <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
@@ -235,7 +238,19 @@ function CameraStreamCard({ camera, onFullscreen }: CameraStreamCardProps) {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <VideoOff className="w-12 h-12 text-gray-500 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">الكاميرا غير متصلة</p>
+              <p className="text-gray-400 text-sm">
+                {hasError ? 'فشل الاتصال بالكاميرا' : 'الكاميرا غير متصلة'}
+              </p>
+              {hasError && (
+                <button
+                  onClick={() => {
+                    setHasError(false);
+                  }}
+                  className="mt-2 px-3 py-1 bg-saudi-green-500/20 text-saudi-green-400 rounded text-xs hover:bg-saudi-green-500/30"
+                >
+                  إعادة المحاولة
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -263,6 +278,11 @@ interface FullscreenViewProps {
 }
 
 function FullscreenView({ camera, onClose }: FullscreenViewProps) {
+  // استخدام رابط الكاميرا مباشرة إذا كان HTTP
+  const rtspUrl = (camera as any).rtspUrl || (camera as any).rtsp_url || '';
+  const isDirectHttp = rtspUrl.startsWith('http://') || rtspUrl.startsWith('https://');
+  const streamUrl = isDirectHttp ? rtspUrl : `http://localhost:8000/api/v1/stream/${camera.id}`;
+  
   return (
     <div className="fixed inset-0 z-50 bg-black">
       {/* شريط علوي */}
@@ -282,13 +302,14 @@ function FullscreenView({ camera, onClose }: FullscreenViewProps) {
         </div>
       </div>
 
-      {/* منطقة الفيديو */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-20 h-20 border-4 border-saudi-green-500/30 border-t-saudi-green-500 rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-white/70">جاري البث...</p>
-          <p className="text-white/50 text-sm mt-2">{camera.rtspUrl}</p>
-        </div>
+      {/* منطقة الفيديو مع الكشف */}
+      <div className="absolute inset-0 flex items-center justify-center pt-16">
+        <StreamWithDetection
+          cameraId={camera.id}
+          streamUrl={streamUrl}
+          className="max-w-full max-h-full object-contain"
+          showDetectionInfo={true}
+        />
       </div>
     </div>
   );

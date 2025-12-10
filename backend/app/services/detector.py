@@ -79,14 +79,18 @@ class WeaponDetector:
     يستخدم YOLO للكشف عن الأسلحة في الصور والفيديو
     """
     
-    # تصنيفات الأسلحة (الإنجليزية -> العربية)
+    # تصنيفات الأسلحة - نموذج Absher (الإنجليزية -> العربية)
     WEAPON_CLASSES = {
+        # فئات نموذج Absher المدرب
+        'Knife': ('سكين', 'knife', 'high'),
+        'Handgun': ('مسدس', 'weapon', 'critical'),
+        # فئات إضافية للتوافق
+        'knife': ('سكين', 'knife', 'high'),
+        'handgun': ('مسدس', 'weapon', 'critical'),
         'gun': ('مسدس', 'weapon', 'critical'),
         'pistol': ('مسدس', 'weapon', 'critical'),
-        'handgun': ('مسدس', 'weapon', 'critical'),
         'rifle': ('بندقية', 'weapon', 'critical'),
         'shotgun': ('بندقية', 'weapon', 'critical'),
-        'knife': ('سكين', 'knife', 'high'),
         'blade': ('سكين', 'knife', 'high'),
         'sword': ('سيف', 'knife', 'high'),
         'machete': ('ساطور', 'knife', 'high'),
@@ -94,8 +98,8 @@ class WeaponDetector:
     
     def __init__(
         self,
-        model_path: str = "./models/yolo11_weapons.pt",
-        confidence_threshold: float = 0.7,
+        model_path: str = "/app/models/best.pt",  # نموذج Absher في Docker
+        confidence_threshold: float = 0.5,
         device: str = "auto"
     ):
         """
@@ -108,7 +112,7 @@ class WeaponDetector:
         """
         self.model_path = model_path
         self.confidence_threshold = confidence_threshold
-        self.device = device
+        self.device = self._detect_best_device(device)
         self.model = None
         self.is_loaded = False
         
@@ -119,6 +123,45 @@ class WeaponDetector:
         self.last_detection_time: Optional[datetime] = None
         
         logger.info(f"🎯 تهيئة محرك الكشف - حد الثقة: {confidence_threshold}")
+        logger.info(f"🖥️ الجهاز المستخدم: {self.device}")
+    
+    def _detect_best_device(self, requested: str) -> str:
+        """
+        اكتشاف أفضل جهاز للمعالجة
+        
+        الأولوية:
+        1. CUDA (NVIDIA GPU) - الأسرع
+        2. MPS (Apple Metal/M1-M4) - سريع جداً
+        3. CPU - الأبطأ
+        """
+        if requested != "auto":
+            return requested
+        
+        try:
+            import torch
+            
+            # التحقق من CUDA (NVIDIA GPU)
+            if torch.cuda.is_available():
+                gpu_name = torch.cuda.get_device_name(0)
+                logger.info(f"🎮 CUDA متاح: {gpu_name}")
+                return "cuda"
+            
+            # التحقق من MPS (Apple Silicon M1/M2/M3/M4)
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                # التحقق من أن MPS يعمل فعلياً
+                try:
+                    test_tensor = torch.zeros(1, device='mps')
+                    del test_tensor
+                    logger.info("🍎 MPS (Apple Metal) متاح ومفعّل - تسريع GPU!")
+                    return "mps"
+                except Exception as e:
+                    logger.warning(f"⚠️ MPS موجود لكن غير مستقر: {e}")
+            
+            logger.info("💻 استخدام CPU")
+            return "cpu"
+            
+        except ImportError:
+            return "cpu"
     
     async def load_model(self) -> bool:
         """
@@ -128,6 +171,7 @@ class WeaponDetector:
             bool: نجاح التحميل
         """
         logger.info("📥 جاري تحميل نموذج الكشف...")
+        logger.info(f"📂 مسار النموذج: {self.model_path}")
         
         if not YOLO_AVAILABLE:
             logger.error("❌ مكتبة ultralytics غير مثبتة")
@@ -139,8 +183,36 @@ class WeaponDetector:
             # التحقق من وجود الملف
             if not os.path.exists(model_file):
                 logger.warning(f"⚠️ ملف النموذج غير موجود: {model_file}")
-                logger.info("📥 سيتم استخدام نموذج YOLO الافتراضي")
-                model_file = "yolov8n.pt"  # نموذج افتراضي صغير
+                # محاولة مسارات بديلة
+                alt_paths = [
+                    "/app/models/best.pt",
+                    "./models/best.pt",
+                    "models/best.pt",
+                    "/app/models/yolov8n.pt",
+                ]
+                for alt_path in alt_paths:
+                    if os.path.exists(alt_path):
+                        model_file = alt_path
+                        logger.info(f"📂 تم العثور على النموذج في: {model_file}")
+                        break
+                else:
+                    logger.info("📥 سيتم استخدام نموذج YOLO الافتراضي")
+                    model_file = "yolov8n.pt"
+            
+            logger.info(f"📦 جاري تحميل النموذج من: {model_file}")
+            
+            # إصلاح مشكلة PyTorch 2.6 weights_only
+            try:
+                import torch
+                # السماح بتحميل فئات ultralytics
+                if hasattr(torch.serialization, 'add_safe_globals'):
+                    try:
+                        from ultralytics.nn.tasks import DetectionModel
+                        torch.serialization.add_safe_globals([DetectionModel])
+                    except:
+                        pass
+            except:
+                pass
             
             # تحميل النموذج
             self.model = YOLO(model_file)
@@ -162,12 +234,126 @@ class WeaponDetector:
                     self.device = "cpu"
             
             self.is_loaded = True
+            
+            # عرض معلومات النموذج
+            if hasattr(self.model, 'names') and self.model.names:
+                logger.info(f"📊 فئات النموذج: {self.model.names}")
+            
             logger.info(f"✅ تم تحميل النموذج على: {self.device}")
             return True
             
         except Exception as e:
             logger.error(f"❌ خطأ في تحميل النموذج: {e}")
             return False
+    
+    def detect_sync(
+        self,
+        frame: Any,
+        frame_id: Optional[str] = None,
+        camera_id: str = "unknown"
+    ) -> DetectionResult:
+        """
+        الكشف المتزامن (Synchronous) - للاستخدام في threads
+        
+        Args:
+            frame: صورة OpenCV (BGR numpy array)
+            frame_id: معرف الإطار
+            camera_id: معرف الكاميرا
+            
+        Returns:
+            DetectionResult: نتيجة الكشف
+        """
+        import asyncio
+        
+        # إنشاء event loop جديد إذا لم يكن موجوداً
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # استخدام الكشف المباشر بدون async
+                return self._detect_internal(frame, camera_id, frame_id)
+            else:
+                return loop.run_until_complete(self.detect(frame, camera_id, frame_id))
+        except RuntimeError:
+            # لا يوجد event loop
+            return self._detect_internal(frame, camera_id, frame_id)
+    
+    def _detect_internal(
+        self,
+        frame: Any,
+        camera_id: str = "unknown",
+        frame_id: Optional[str] = None
+    ) -> DetectionResult:
+        """الكشف الداخلي المباشر"""
+        start_time = time.time()
+        detections: List[Detection] = []
+        
+        if frame_id is None:
+            frame_id = str(uuid.uuid4())[:8]
+        
+        if not self.is_loaded or self.model is None:
+            return DetectionResult(
+                frame_id=frame_id,
+                camera_id=camera_id,
+                timestamp=datetime.utcnow(),
+                detections=[],
+                processing_time=0.0
+            )
+        
+        try:
+            results = self.model(
+                frame,
+                conf=self.confidence_threshold,
+                device=self.device,
+                verbose=False
+            )
+            
+            for result in results:
+                boxes = result.boxes
+                if boxes is None:
+                    continue
+                
+                for i, box in enumerate(boxes):
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    confidence = float(box.conf[0])
+                    class_id = int(box.cls[0])
+                    class_name = self.model.names[class_id].lower()
+                    
+                    if class_name in self.WEAPON_CLASSES:
+                        name_ar, det_type, severity = self.WEAPON_CLASSES[class_name]
+                    else:
+                        found = False
+                        for key, (name_ar, det_type, severity) in self.WEAPON_CLASSES.items():
+                            if key in class_name:
+                                found = True
+                                break
+                        if not found:
+                            continue
+                    
+                    detection = Detection(
+                        id=f"{frame_id}_{i}",
+                        class_name=class_name,
+                        class_name_ar=name_ar,
+                        confidence=confidence,
+                        bbox=(int(x1), int(y1), int(x2), int(y2)),
+                        detection_type=det_type,
+                        severity=severity
+                    )
+                    detections.append(detection)
+                    
+        except Exception as e:
+            logger.error(f"❌ خطأ في الكشف: {e}")
+        
+        processing_time = time.time() - start_time
+        self.total_frames += 1
+        self.total_detections += len(detections)
+        
+        return DetectionResult(
+            frame_id=frame_id,
+            camera_id=camera_id,
+            timestamp=datetime.utcnow(),
+            detections=detections,
+            processing_time=processing_time
+        )
     
     async def detect(
         self,
@@ -375,6 +561,42 @@ class WeaponDetector:
 
 # إنشاء كائن الكشف العام
 _detector: Optional[WeaponDetector] = None
+
+# كائن الكشف للاستيراد المباشر (يتم تهيئته عند بدء التطبيق)
+class DetectorProxy:
+    """
+    وكيل للوصول إلى محرك الكشف
+    يسمح بالاستيراد المباشر قبل تهيئة المحرك
+    """
+    def __getattr__(self, name):
+        global _detector
+        if _detector is None:
+            # إنشاء كائن بدون تحميل النموذج
+            return None
+        return getattr(_detector, name)
+    
+    @property
+    def is_loaded(self):
+        global _detector
+        return _detector is not None and _detector.is_loaded
+    
+    @property
+    def model(self):
+        global _detector
+        return _detector.model if _detector else None
+    
+    @property
+    def confidence_threshold(self):
+        global _detector
+        return _detector.confidence_threshold if _detector else 0.5
+    
+    @property
+    def device(self):
+        global _detector
+        return _detector.device if _detector else "cpu"
+
+# كائن الكشف للاستيراد المباشر
+detector = DetectorProxy()
 
 
 async def get_detector() -> WeaponDetector:

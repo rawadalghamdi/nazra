@@ -664,6 +664,34 @@ async def notify_detection(camera_id: str, detection: dict):
     await manager.broadcast_detection(camera_id, detection)
 
 
+async def notify_detection_event(event_data: dict):
+    """
+    إرسال حدث كشف لجميع المشتركين في الكاميرا
+    يُستخدم من detection_worker
+    """
+    camera_id = event_data.get("camera_id")
+    if camera_id:
+        await manager.broadcast_to_camera(camera_id, event_data)
+        
+        # إذا كان هناك كشوفات، أرسل تنبيه
+        detections = event_data.get("detections", [])
+        if detections:
+            for det in detections:
+                await manager.broadcast_alert({
+                    "type": "weapon_detected",
+                    "camera_id": camera_id,
+                    "class_name": det.get("class_name"),
+                    "confidence": det.get("confidence"),
+                    "bbox": {
+                        "x1": det.get("x1"),
+                        "y1": det.get("y1"),
+                        "x2": det.get("x2"),
+                        "y2": det.get("y2")
+                    },
+                    "timestamp": event_data.get("timestamp")
+                })
+
+
 async def notify_camera_status(camera_id: str, status: str):
     """
     إرسال تحديث حالة كاميرا
@@ -674,4 +702,113 @@ async def notify_camera_status(camera_id: str, status: str):
         "status": status,
         "timestamp": datetime.utcnow().isoformat()
     })
+
+
+async def push_detection_result(result: dict):
+    """
+    بث نتيجة كشف من Pipeline إلى جميع المشتركين
+    
+    يُستدعى من detection_pipeline.py عند اكتشاف كائنات
+    
+    Args:
+        result: dict مع camera_id, detections, frame_size, processing_time_ms
+    """
+    camera_id = result.get("camera_id")
+    if not camera_id:
+        return
+    
+    message = {
+        "type": "detection",
+        "camera_id": camera_id,
+        "timestamp": datetime.utcnow().isoformat(),
+        "frame_width": result.get("frame_size", {}).get("width", 1920),
+        "frame_height": result.get("frame_size", {}).get("height", 1080),
+        "processing_time_ms": result.get("processing_time_ms", 0),
+        "detections": [
+            {
+                "class_name": d.get("class_name"),
+                "class_name_ar": d.get("class_name_ar"),
+                "confidence": d.get("confidence"),
+                "x1": d.get("bbox", {}).get("x1", 0),
+                "y1": d.get("bbox", {}).get("y1", 0),
+                "x2": d.get("bbox", {}).get("x2", 0),
+                "y2": d.get("bbox", {}).get("y2", 0),
+                "width": d.get("bbox", {}).get("x2", 0) - d.get("bbox", {}).get("x1", 0),
+                "height": d.get("bbox", {}).get("y2", 0) - d.get("bbox", {}).get("y1", 0),
+                "detection_type": d.get("detection_type"),
+                "severity": d.get("severity")
+            }
+            for d in result.get("detections", [])
+        ]
+    }
+    
+    # بث للمشتركين في هذه الكاميرا
+    await manager.broadcast_to_camera(camera_id, message)
+    
+    # إذا كان هناك كشوفات، أرسل تنبيه أيضاً
+    if result.get("detections"):
+        alert_message = {
+            "type": "detection_alert",
+            "camera_id": camera_id,
+            "count": len(result.get("detections", [])),
+            "severity": max(
+                (d.get("severity", "low") for d in result.get("detections", [])),
+                key=lambda x: {"critical": 3, "high": 2, "medium": 1, "low": 0}.get(x, 0),
+                default="low"
+            ),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        await manager.broadcast_alerts(alert_message)
+
+
+@router.websocket("/detection/{camera_id}")
+async def websocket_detection(websocket: WebSocket, camera_id: str):
+    """
+    نقطة اتصال WebSocket للكشف المباشر
+    
+    ترسل إحداثيات الكشف فقط (بدون صورة) لرسمها على الفيديو
+    
+    الرسائل المُرسلة:
+    - {"type": "detection", "camera_id": "...", "detections": [...], "frame_width": 1920, "frame_height": 1080}
+    """
+    await manager.connect(websocket, {"type": "detection", "camera_id": camera_id})
+    manager.subscribe_camera(websocket, camera_id)
+    
+    try:
+        # إرسال رسالة ترحيب
+        await manager.send_personal(websocket, {
+            "type": "connected",
+            "message": f"متصل بكشف الكاميرا: {camera_id}",
+            "camera_id": camera_id,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+        logger.info(f"🔗 اتصال جديد للكشف: {camera_id}")
+        
+        while True:
+            try:
+                # استقبال الرسائل
+                data = await websocket.receive_json()
+                
+                action = data.get("action")
+                
+                if action == "ping":
+                    manager.update_heartbeat(websocket)
+                    await manager.send_personal(websocket, {
+                        "type": "pong",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                
+                elif action == "pong":
+                    manager.update_heartbeat(websocket)
+                    
+            except json.JSONDecodeError:
+                pass
+                
+    except WebSocketDisconnect:
+        logger.info(f"🔌 قطع اتصال كشف الكاميرا: {camera_id}")
+    except Exception as e:
+        logger.error(f"❌ خطأ في WebSocket الكشف: {e}")
+    finally:
+        manager.disconnect(websocket)
 

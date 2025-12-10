@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import type { CameraCardData, GridLayout } from '../../types';
 import { cameraService } from '../../services/api';
+import { StreamWithDetection } from '../Camera/StreamWithDetection';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // واجهات المكون
@@ -101,6 +102,7 @@ function CameraGrid({
         status: cam.status as 'online' | 'offline',
         isRecording: cam.isRecording,
         resolution: cam.resolution,
+        rtspUrl: cam.rtspUrl,
         hasAlert: false, // سيتم تحديثها من التنبيهات
         alertCount: 0,
       }));
@@ -397,7 +399,16 @@ function CameraGrid({
 // مكون بطاقة الكاميرا
 function CameraCard({ camera, onClick, onSettings }: CameraCardProps) {
   const [isHovered, setIsHovered] = useState(false);
+  const [hasError, setHasError] = useState(false);
   const isOnline = camera.status === 'online';
+  
+  // استخدام رابط الكاميرا مباشرة إذا كان HTTP (أسرع)
+  const rtspUrl = camera.rtspUrl || '';
+  const isDirectHttp = rtspUrl.startsWith('http://') || rtspUrl.startsWith('https://');
+  
+  // للـ IP Webcam: استخدم /video مباشرة للـ MJPEG stream
+  // للباقي: استخدم Backend proxy
+  const streamUrl = isDirectHttp ? rtspUrl : `http://localhost:8000/api/v1/stream/${camera.id}`;
 
   return (
     <div
@@ -415,18 +426,15 @@ function CameraCard({ camera, onClick, onSettings }: CameraCardProps) {
     >
       {/* منطقة الفيديو */}
       <div className="aspect-video relative bg-gray-900">
-        {isOnline ? (
+        {isOnline && !hasError ? (
           <>
-            {/* محاكاة بث الفيديو */}
-            <div className="absolute inset-0 bg-gradient-to-br from-gray-800/20 to-transparent">
-              {/* صورة مصغرة وهمية */}
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-16 h-16 border-4 border-saudi-green-500/30 border-t-saudi-green-500 rounded-full animate-spin mx-auto mb-2"></div>
-                  <p className="text-gray-400 text-xs">جاري البث...</p>
-                </div>
-              </div>
-            </div>
+            {/* بث الفيديو مع طبقة الكشف */}
+            <StreamWithDetection
+              cameraId={camera.id}
+              streamUrl={streamUrl}
+              className="w-full h-full object-cover"
+              showDetectionInfo={false}
+            />
 
             {/* مؤشر التسجيل */}
             {camera.isRecording && (
@@ -445,11 +453,24 @@ function CameraCard({ camera, onClick, onSettings }: CameraCardProps) {
             )}
           </>
         ) : (
-          // حالة غير متصل
+          // حالة غير متصل أو خطأ
           <div className="absolute inset-0 flex items-center justify-center bg-gray-800">
             <div className="text-center">
               <VideoOff className="w-12 h-12 text-gray-500 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">الكاميرا غير متصلة</p>
+              <p className="text-gray-400 text-sm">
+                {hasError ? 'فشل الاتصال' : 'الكاميرا غير متصلة'}
+              </p>
+              {hasError && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHasError(false);
+                  }}
+                  className="mt-2 px-2 py-1 bg-saudi-green-500/20 text-saudi-green-400 rounded text-xs hover:bg-saudi-green-500/30"
+                >
+                  إعادة المحاولة
+                </button>
+              )}
             </div>
           </div>
         )}

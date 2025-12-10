@@ -94,9 +94,9 @@ function AddCameraModal({ camera, onClose, onSave }: AddCameraModalProps) {
 
     if (formData.connectionType === 'rtsp') {
       if (!formData.rtspUrl.trim()) {
-        newErrors.rtspUrl = 'رابط RTSP مطلوب';
-      } else if (!formData.rtspUrl.startsWith('rtsp://')) {
-        newErrors.rtspUrl = 'الرابط يجب أن يبدأ بـ rtsp://';
+        newErrors.rtspUrl = 'رابط البث مطلوب';
+      } else if (!formData.rtspUrl.startsWith('rtsp://') && !formData.rtspUrl.startsWith('http://') && !formData.rtspUrl.startsWith('https://')) {
+        newErrors.rtspUrl = 'الرابط يجب أن يبدأ بـ rtsp:// أو http://';
       }
     } else {
       if (!formData.onvifIp.trim()) {
@@ -135,7 +135,7 @@ function AddCameraModal({ camera, onClose, onSave }: AddCameraModalProps) {
         : `rtsp://${formData.onvifUsername}:${formData.onvifPassword}@${formData.onvifIp}:${formData.onvifPort}/stream1`;
       
       // استدعاء API لاختبار الاتصال
-      const response = await fetch('/api/cameras/test-connection', {
+      const response = await fetch('/api/v1/cameras/test-connection', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -379,7 +379,7 @@ function AddCameraModal({ camera, onClose, onSave }: AddCameraModalProps) {
                       type="text"
                       value={formData.rtspUrl}
                       onChange={(e) => updateField('rtspUrl', e.target.value)}
-                      placeholder="rtsp://192.168.1.100:554/stream1"
+                      placeholder="http://192.168.100.57:8080/video"
                       dir="ltr"
                       className={`w-full px-4 py-2.5 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-saudi-green-500 font-mono text-sm ${
                         errors.rtspUrl ? 'border-red-500' : 'border-nazra-border'
@@ -387,7 +387,7 @@ function AddCameraModal({ camera, onClose, onSave }: AddCameraModalProps) {
                     />
                     {errors.rtspUrl && <p className="text-red-500 text-xs mt-1">{errors.rtspUrl}</p>}
                     <p className="text-xs text-nazra-text-muted mt-2">
-                      صيغة الرابط: rtsp://[username:password@]ip:port/path
+                      يدعم: rtsp:// أو http:// (IP Webcam)
                     </p>
                   </div>
                 </div>

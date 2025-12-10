@@ -9,6 +9,7 @@ import {
   FileBarChart,
   ChevronLeft,
   ChevronRight,
+  Crosshair,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -26,6 +27,7 @@ const navigation: NavigationItem[] = [
   { name: 'البث المباشر', href: '/live', icon: Video },
   { name: 'التنبيهات', href: '/alerts', icon: Bell, badge: 5 },
   { name: 'الكاميرات', href: '/cameras', icon: Camera },
+  { name: 'اختبار الكشف', href: '/detection', icon: Crosshair },
   { name: 'التقارير', href: '/reports', icon: FileBarChart },
   { name: 'الإعدادات', href: '/settings', icon: Settings },
 ];

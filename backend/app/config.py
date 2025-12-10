@@ -65,14 +65,14 @@ class Settings(BaseSettings):
     # ==================
     # إعدادات الكشف
     # ==================
-    DETECTION_CONFIDENCE_THRESHOLD: float = 0.7
+    DETECTION_CONFIDENCE_THRESHOLD: float = 0.5  # خفض الحد للاختبار
     MAX_DETECTION_TIME: float = 2.0  # ثانية
     DETECTION_FRAME_SKIP: int = 2  # تخطي إطارات للأداء
     
     # ==================
     # إعدادات YOLO
     # ==================
-    YOLO_MODEL_PATH: str = "./models/yolo11_weapons.pt"
+    YOLO_MODEL_PATH: str = "/app/models/best.pt"  # نموذج Absher المدرب
     YOLO_DEVICE: str = "auto"  # auto, cpu, cuda, mps
     
     # ==================

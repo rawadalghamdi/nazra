@@ -100,7 +100,7 @@ function CameraManagement() {
     try {
       const camera = cameras.find(c => c.id === cameraId);
       if (camera) {
-        const response = await fetch('/api/cameras/test-connection', {
+        const response = await fetch('/api/v1/cameras/test-connection', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rtspUrl: camera.rtspUrl }),
