@@ -11,21 +11,23 @@ import {
   ChevronRight,
   Crosshair,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useAlertStore } from '../../hooks/useStore';
+import { alertService } from '../../services/api';
 
 // واجهة عنصر القائمة
 interface NavigationItem {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  badge?: number;
+  badgeKey?: 'alerts'; // مفتاح للـ badge الديناميكي
 }
 
-// عناصر القائمة الرئيسية
-const navigation: NavigationItem[] = [
+// عناصر القائمة الرئيسية (بدون badge ثابت)
+const navigationItems: NavigationItem[] = [
   { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard },
   { name: 'البث المباشر', href: '/live', icon: Video },
-  { name: 'التنبيهات', href: '/alerts', icon: Bell, badge: 5 },
+  { name: 'التنبيهات', href: '/alerts', icon: Bell, badgeKey: 'alerts' },
   { name: 'الكاميرات', href: '/cameras', icon: Camera },
   { name: 'اختبار الكشف', href: '/detection', icon: Crosshair },
   { name: 'التقارير', href: '/reports', icon: FileBarChart },
@@ -34,7 +36,42 @@ const navigation: NavigationItem[] = [
 
 function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [pendingAlertsCount, setPendingAlertsCount] = useState(0);
   const location = useLocation();
+  
+  // الحصول على عدد التنبيهات غير المقروءة من الـ Store
+  const unreadCount = useAlertStore((state) => state.unreadCount);
+  
+  // جلب عدد التنبيهات الجديدة من API عند التحميل
+  useEffect(() => {
+    const fetchAlertsCount = async () => {
+      try {
+        const stats = await alertService.getStats();
+        // التنبيهات الجديدة + قيد المراجعة
+        const pending = (stats.new || 0) + (stats.reviewing || 0);
+        setPendingAlertsCount(pending);
+      } catch (error) {
+        console.error('خطأ في جلب عدد التنبيهات:', error);
+      }
+    };
+    
+    fetchAlertsCount();
+    
+    // تحديث كل 30 ثانية
+    const interval = setInterval(fetchAlertsCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  // استخدام أكبر قيمة بين Store و API
+  const alertsBadge = Math.max(unreadCount, pendingAlertsCount);
+  
+  // إنشاء navigation مع badges ديناميكية
+  const navigation = useMemo(() => {
+    return navigationItems.map(item => ({
+      ...item,
+      badge: item.badgeKey === 'alerts' ? alertsBadge : undefined,
+    }));
+  }, [alertsBadge]);
 
   return (
     <aside 
@@ -129,7 +166,7 @@ function Sidebar() {
               <span className="text-sm text-nazra-text">النظام يعمل</span>
             </div>
             <div className="text-xs text-nazra-text-muted space-y-1">
-              <p>الإصدار: 1.0.0</p>
+              <p>الإصدار: 1.2.0</p>
               <p>آخر تحديث: {new Date().toLocaleDateString('ar-SA')}</p>
             </div>
           </div>

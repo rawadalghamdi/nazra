@@ -254,57 +254,85 @@ class ConnectionManager:
     
     async def broadcast(self, message: dict):
         """
-        بث رسالة لجميع المتصلين
+        ⚡ بث رسالة لجميع المتصلين (متوازي)
         """
-        disconnected = []
-        for connection in self.active_connections.copy():
+        if not self.active_connections:
+            return
+        
+        # ⚡ إرسال متوازي باستخدام asyncio.gather
+        async def safe_send(conn):
             try:
-                await connection.send_json(message)
+                await conn.send_json(message)
+                return None
             except Exception:
-                disconnected.append(connection)
+                return conn
+        
+        results = await asyncio.gather(
+            *[safe_send(conn) for conn in self.active_connections.copy()],
+            return_exceptions=True
+        )
         
         # إزالة الاتصالات المقطوعة
-        for conn in disconnected:
-            self.disconnect(conn)
+        for result in results:
+            if result is not None and not isinstance(result, Exception):
+                self.disconnect(result)
     
     async def broadcast_alert(self, alert_data: dict):
         """
-        بث تنبيه جديد لجميع مشتركي التنبيهات
+        ⚡ بث تنبيه جديد لجميع مشتركي التنبيهات (متوازي)
         """
+        if not self.alert_subscribers:
+            return
+        
         message = {
             "type": "new_alert",
             "data": alert_data,
             "timestamp": datetime.utcnow().isoformat()
         }
         
-        disconnected = []
-        for connection in self.alert_subscribers.copy():
+        # ⚡ إرسال متوازي
+        async def safe_send(conn):
             try:
-                await connection.send_json(message)
+                await conn.send_json(message)
+                return None
             except Exception:
-                disconnected.append(connection)
+                return conn
         
-        for conn in disconnected:
-            self.disconnect(conn)
+        results = await asyncio.gather(
+            *[safe_send(conn) for conn in self.alert_subscribers.copy()],
+            return_exceptions=True
+        )
+        
+        for result in results:
+            if result is not None and not isinstance(result, Exception):
+                self.disconnect(result)
         
         logger.info(f"📢 تم بث تنبيه لـ {len(self.alert_subscribers)} مشترك")
     
     async def broadcast_to_camera(self, camera_id: str, message: dict):
         """
-        بث رسالة لمشتركي كاميرا محددة
+        ⚡ بث رسالة لمشتركي كاميرا محددة (متوازي)
         """
-        if camera_id not in self.camera_subscribers:
+        subscribers = self.camera_subscribers.get(camera_id)
+        if not subscribers:
             return
         
-        disconnected = []
-        for connection in self.camera_subscribers[camera_id].copy():
+        # ⚡ إرسال متوازي
+        async def safe_send(conn):
             try:
-                await connection.send_json(message)
+                await conn.send_json(message)
+                return None
             except Exception:
-                disconnected.append(connection)
+                return conn
         
-        for conn in disconnected:
-            self.disconnect(conn)
+        results = await asyncio.gather(
+            *[safe_send(conn) for conn in subscribers.copy()],
+            return_exceptions=True
+        )
+        
+        for result in results:
+            if result is not None and not isinstance(result, Exception):
+                self.disconnect(result)
     
     async def broadcast_status(self, status: dict):
         """
@@ -758,7 +786,7 @@ async def push_detection_result(result: dict):
             ),
             "timestamp": datetime.utcnow().isoformat()
         }
-        await manager.broadcast_alerts(alert_message)
+        await manager.broadcast_alert(alert_message)
 
 
 @router.websocket("/detection/{camera_id}")

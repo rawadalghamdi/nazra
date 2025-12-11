@@ -12,7 +12,6 @@ Detection Pipeline - خط أنابيب الكشف المحسّن
 import asyncio
 import logging
 import time
-import hashlib
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -21,6 +20,14 @@ from enum import Enum
 import numpy as np
 import cv2
 import httpx
+
+# استخدام xxhash للأداء الأفضل (10x أسرع من md5)
+try:
+    import xxhash
+    XXHASH_AVAILABLE = True
+except ImportError:
+    import hashlib
+    XXHASH_AVAILABLE = False
 
 logger = logging.getLogger("نظرة.pipeline")
 
@@ -43,12 +50,16 @@ class FrameTask:
     frame_hash: Optional[str] = None
     
     def compute_hash(self) -> str:
-        """حساب hash للإطار لاكتشاف التشابه"""
+        """حساب hash للإطار لاكتشاف التشابه - xxhash أسرع 10x من md5"""
         if self.frame is not None:
             # تصغير الصورة وحساب hash
             small = cv2.resize(self.frame, (16, 16))
             gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            self.frame_hash = hashlib.md5(gray.tobytes()).hexdigest()
+            # استخدام xxhash إذا متوفر (أسرع 10x)
+            if XXHASH_AVAILABLE:
+                self.frame_hash = xxhash.xxh64(gray.tobytes()).hexdigest()
+            else:
+                self.frame_hash = hashlib.md5(gray.tobytes()).hexdigest()
         return self.frame_hash or ""
 
 
@@ -66,41 +77,81 @@ class DetectionResult:
 
 class FrameBuffer:
     """
-    مخزن مؤقت للإطارات مع تخطي الإطارات المتشابهة
+    ⚡ مخزن مؤقت محسّن للإطارات مع تخطي ذكي
     يوفر 60-80% من معالجة AI على المشاهد الثابتة
+    
+    التحسينات:
+    - Adaptive skip limit بناءً على حركة المشهد
+    - تنظيف ذاكرة تلقائي
+    - إحصائيات مفصلة
     """
     
     def __init__(self, max_size: int = 100, similarity_threshold: float = 0.95):
         self.max_size = max_size
         self.similarity_threshold = similarity_threshold
-        self._buffer: Dict[str, deque] = {}  # camera_id -> recent frames
+        self._buffer: Dict[str, deque] = {}
         self._last_hash: Dict[str, str] = {}
         self._skip_count: Dict[str, int] = {}
+        self._total_skipped: Dict[str, int] = {}
+        self._total_processed: Dict[str, int] = {}
+        self._last_activity: Dict[str, float] = {}
         
     def should_skip(self, camera_id: str, frame_hash: str) -> tuple[bool, str]:
         """
-        هل يجب تخطي هذا الإطار؟
-        يستخدم perceptual hashing للمقارنة
+        ⚡ تخطي ذكي مع حد تكيفي
         """
+        current_time = time.time()
+        self._last_activity[camera_id] = current_time
+        
         if camera_id not in self._last_hash:
             self._last_hash[camera_id] = frame_hash
             self._skip_count[camera_id] = 0
+            self._total_skipped[camera_id] = 0
+            self._total_processed[camera_id] = 1
             return False, ""
+        
+        self._total_processed[camera_id] = self._total_processed.get(camera_id, 0) + 1
         
         # مقارنة hash
         if self._last_hash[camera_id] == frame_hash:
             self._skip_count[camera_id] += 1
-            # لا نتخطى أكثر من 10 إطارات متتالية
-            if self._skip_count[camera_id] < 10:
+            
+            # ⚡ Adaptive skip limit: أكثر تحفظاً في المشاهد النشطة
+            max_consecutive = 10
+            skip_ratio = self._total_skipped.get(camera_id, 0) / max(1, self._total_processed[camera_id])
+            if skip_ratio < 0.3:  # مشهد نشط
+                max_consecutive = 5
+            
+            if self._skip_count[camera_id] < max_consecutive:
+                self._total_skipped[camera_id] = self._total_skipped.get(camera_id, 0) + 1
                 return True, "إطار متشابه"
         
         self._last_hash[camera_id] = frame_hash
         self._skip_count[camera_id] = 0
         return False, ""
     
+    def cleanup_inactive(self, max_inactive_seconds: float = 120.0):
+        """تنظيف الكاميرات غير النشطة"""
+        current_time = time.time()
+        inactive = [
+            cam_id for cam_id, last_time in self._last_activity.items()
+            if current_time - last_time > max_inactive_seconds
+        ]
+        for cam_id in inactive:
+            self._last_hash.pop(cam_id, None)
+            self._skip_count.pop(cam_id, None)
+            self._total_skipped.pop(cam_id, None)
+            self._total_processed.pop(cam_id, None)
+            self._last_activity.pop(cam_id, None)
+    
     def get_stats(self, camera_id: str) -> Dict:
+        total = self._total_processed.get(camera_id, 0)
+        skipped = self._total_skipped.get(camera_id, 0)
         return {
             "skip_count": self._skip_count.get(camera_id, 0),
+            "total_skipped": skipped,
+            "total_processed": total,
+            "skip_ratio": round(skipped / max(1, total) * 100, 1),
             "last_hash": self._last_hash.get(camera_id, "")[:8]
         }
 

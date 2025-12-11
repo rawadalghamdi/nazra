@@ -184,7 +184,7 @@ services:
   # ------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: nazra-redis
+    container_name: nazra-redis-cache
     ports:
       - "6379:6379"
     volumes:

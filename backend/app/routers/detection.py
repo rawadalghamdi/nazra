@@ -5,7 +5,7 @@ POST /api/v1/detection/test - اختبار الكشف على صورة
 GET /api/v1/detection/status - حالة نموذج الكشف
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Request
 from fastapi.responses import Response, JSONResponse
 from typing import Optional, List
 from datetime import datetime
@@ -18,6 +18,16 @@ import os
 logger = logging.getLogger("نظرة.الكشف")
 
 router = APIRouter(prefix="/detection", tags=["الكشف"])
+
+# Rate Limiting - محاولة الاستيراد
+try:
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+    limiter = Limiter(key_func=get_remote_address)
+    RATE_LIMIT_AVAILABLE = True
+except ImportError:
+    limiter = None
+    RATE_LIMIT_AVAILABLE = False
 
 
 @router.get("/status")
@@ -54,6 +64,7 @@ async def get_detection_status():
 
 @router.post("/test")
 async def test_detection(
+    request: Request,
     file: UploadFile = File(..., description="صورة للاختبار (JPEG/PNG)")
 ):
     """
@@ -112,13 +123,14 @@ async def test_detection(
         )
         
         # تحويل الصورة المعالجة إلى Base64
+        from app.config import settings
         annotated_image_base64 = None
         if result.frame_with_boxes is not None:
-            _, buffer = cv2.imencode('.jpg', result.frame_with_boxes, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            _, buffer = cv2.imencode('.jpg', result.frame_with_boxes, [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY_DETECTION])
             annotated_image_base64 = base64.b64encode(buffer).decode('utf-8')
         else:
             # إذا لم يكن هناك كشف، أرجع الصورة الأصلية
-            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+            _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY_DETECTION])
             annotated_image_base64 = base64.b64encode(buffer).decode('utf-8')
         
         # بناء الاستجابة
@@ -227,7 +239,8 @@ async def test_detection_return_image(
         output_frame = result.frame_with_boxes if result.frame_with_boxes is not None else frame
         
         # تحويل إلى JPEG
-        _, buffer = cv2.imencode('.jpg', output_frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        from app.config import settings
+        _, buffer = cv2.imencode('.jpg', output_frame, [cv2.IMWRITE_JPEG_QUALITY, settings.JPEG_QUALITY_DETECTION])
         
         return Response(
             content=buffer.tobytes(),
@@ -454,6 +467,7 @@ async def get_detection_classes():
 
 @router.post("/test/video")
 async def test_video_detection(
+    request: Request,
     file: UploadFile = File(..., description="فيديو للاختبار (MP4, MOV, AVI)"),
     skip_frames: int = 5
 ):

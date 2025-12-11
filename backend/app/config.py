@@ -70,6 +70,18 @@ class Settings(BaseSettings):
     DETECTION_FRAME_SKIP: int = 2  # تخطي إطارات للأداء
     
     # ==================
+    # إعدادات تحسين الأداء (Pareto 80/20)
+    # ==================
+    MOTION_DETECTION_ENABLED: bool = True      # تفعيل كشف الحركة قبل AI
+    MOTION_THRESHOLD: float = 0.02             # حد الحركة (2% تغيير)
+    MODEL_WARMUP_ENABLED: bool = True          # تسخين النموذج عند البدء
+    BATCH_GPU_TRANSFER: bool = True            # نقل دفعي GPU→CPU
+    TURBOJPEG_ENABLED: bool = True             # استخدام TurboJPEG (3x أسرع)
+    CACHE_CLEANUP_INTERVAL: int = 60           # تنظيف الكاش (ثانية)
+    MAX_CONCURRENT_STREAMS: int = 8            # الحد الأقصى للبث المتزامن
+    ADAPTIVE_FRAME_SKIP: bool = True           # تخطي تكيفي للإطارات
+    
+    # ==================
     # إعدادات YOLO
     # ==================
     YOLO_MODEL_PATH: str = "/app/models/best.pt"  # نموذج Absher المدرب
@@ -93,6 +105,13 @@ class Settings(BaseSettings):
     STREAM_HEIGHT: int = 480
     
     # ==================
+    # إعدادات جودة JPEG
+    # ==================
+    JPEG_QUALITY_STREAM: int = 70      # جودة البث المباشر (توازن سرعة/جودة)
+    JPEG_QUALITY_SNAPSHOT: int = 85    # جودة اللقطات
+    JPEG_QUALITY_DETECTION: int = 80   # جودة صور الكشف
+    
+    # ==================
     # إعدادات الإشعارات
     # ==================
     NOTIFICATION_ENABLED: bool = True
@@ -111,10 +130,6 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
-
-
-# إنشاء كائن الإعدادات
-settings = Settings()
 
 
 # دالة للحصول على مسار مجلد

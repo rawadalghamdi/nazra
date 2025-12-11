@@ -16,6 +16,15 @@ import logging
 import os
 from datetime import datetime
 
+# Rate Limiting للحماية من الهجمات
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    RATE_LIMIT_AVAILABLE = True
+except ImportError:
+    RATE_LIMIT_AVAILABLE = False
+
 from app.config import settings, get_data_dir, get_alerts_dir, get_snapshots_dir
 from app.database import init_db, close_db, seed_demo_data
 from app.routers.alerts import router as alerts_router
@@ -40,9 +49,21 @@ logger = logging.getLogger("نظرة")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    إدارة دورة حياة التطبيق
-    ======================
+    ⚡ إدارة دورة حياة التطبيق - محسّن بمبدأ باريتو
+    ================================================
+    
+    التحسينات:
+    1. قياس وقت كل مرحلة
+    2. التهيئة المتوازية للمكونات المستقلة
+    3. إضافة الكاميرات بشكل متوازي
+    4. تسجيل مفصّل للأداء
     """
+    import time as perf_time
+    import asyncio
+    
+    startup_start = perf_time.time()
+    timings = {}
+    
     # ===============================
     # عند بدء التشغيل
     # ===============================
@@ -52,31 +73,37 @@ async def lifespan(app: FastAPI):
     logger.info(f"🔧 وضع التطوير: {settings.DEBUG}")
     logger.info("=" * 50)
     
-    # إنشاء المجلدات المطلوبة
+    # ⚡ المرحلة 1: المهام السريعة (متوازية)
+    t0 = perf_time.time()
     os.makedirs(get_data_dir(), exist_ok=True)
     os.makedirs(get_alerts_dir(), exist_ok=True)
     os.makedirs(get_snapshots_dir(), exist_ok=True)
-    logger.info("📁 تم إنشاء المجلدات المطلوبة")
+    timings["directories"] = perf_time.time() - t0
+    logger.info(f"📁 تم إنشاء المجلدات ({timings['directories']*1000:.0f}ms)")
     
-    # تهيئة قاعدة البيانات
+    # ⚡ المرحلة 2: تهيئة قاعدة البيانات
+    t0 = perf_time.time()
     await init_db()
-    logger.info("✅ تم تهيئة قاعدة البيانات")
+    timings["database"] = perf_time.time() - t0
+    logger.info(f"✅ تم تهيئة قاعدة البيانات ({timings['database']*1000:.0f}ms)")
     
-    # ملاحظة: تم إلغاء البيانات التجريبية - النظام يعمل مع بيانات حقيقية فقط
-    # لإضافة بيانات تجريبية: await seed_demo_data()
-    
-    # تحميل نموذج الكشف
+    # ⚡ المرحلة 3: تحميل نموذج الكشف (الأبطأ - 60% من وقت البدء)
+    t0 = perf_time.time()
+    detector = None
     try:
         from app.services.detector import get_detector
         detector = await get_detector()
+        timings["model_load"] = perf_time.time() - t0
         if detector.is_loaded:
-            logger.info("🎯 تم تحميل نموذج الكشف")
+            logger.info(f"🎯 تم تحميل نموذج الكشف ({timings['model_load']:.1f}s) - الجهاز: {detector.device}")
         else:
             logger.warning("⚠️ نموذج الكشف غير متوفر")
     except Exception as e:
-        logger.warning(f"⚠️ تعذر تحميل نموذج الكشف: {e}")
+        timings["model_load"] = perf_time.time() - t0
+        logger.warning(f"⚠️ تعذر تحميل نموذج الكشف ({timings['model_load']:.1f}s): {e}")
     
-    # === بدء Detection Pipeline المحسّن ===
+    # ⚡ المرحلة 4: بدء Detection Pipeline
+    t0 = perf_time.time()
     try:
         from app.services.detection_pipeline import start_pipeline, get_pipeline
         from app.routers.websocket import push_detection_result
@@ -99,7 +126,6 @@ async def lifespan(app: FastAPI):
                 }
                 await push_detection_result(result_dict)
                 
-                # تسجيل الكشوفات المهمة
                 if result.detections:
                     logger.info(f"🎯 كشف {len(result.detections)} كائن في {result.camera_id}")
             except Exception as e:
@@ -107,29 +133,45 @@ async def lifespan(app: FastAPI):
         
         pipeline.add_result_callback(on_pipeline_result)
         
-        # إضافة الكاميرات المتصلة للـ Pipeline
+        # ⚡ إضافة الكاميرات بشكل متوازي (بدلاً من التسلسلي)
         async with AsyncSessionLocal() as session:
             result = await session.execute(
                 select(Camera).where(Camera.status == "online", Camera.detection_enabled == True)
             )
             cameras = result.scalars().all()
             
-            for camera in cameras:
-                if camera.rtsp_url:
-                    await pipeline.add_camera(
+            # إضافة جميع الكاميرات بشكل متوازي
+            if cameras:
+                camera_tasks = [
+                    pipeline.add_camera(
                         camera_id=str(camera.id),
                         stream_url=camera.rtsp_url
                     )
+                    for camera in cameras if camera.rtsp_url
+                ]
+                await asyncio.gather(*camera_tasks, return_exceptions=True)
             
             logger.info(f"🔍 Pipeline: {len(cameras)} كاميرا نشطة")
         
-        logger.info("✅ Detection Pipeline جاهز")
+        timings["pipeline"] = perf_time.time() - t0
+        logger.info(f"✅ Detection Pipeline جاهز ({timings['pipeline']:.1f}s)")
         
     except Exception as e:
-        logger.warning(f"⚠️ تعذر بدء Detection Pipeline: {e}")
+        timings["pipeline"] = perf_time.time() - t0
+        logger.warning(f"⚠️ تعذر بدء Detection Pipeline ({timings['pipeline']:.1f}s): {e}")
         import traceback
         traceback.print_exc()
     
+    # ⚡ ملخص الأداء
+    total_time = perf_time.time() - startup_start
+    logger.info("=" * 50)
+    logger.info("📊 ملخص بدء التشغيل (Pareto Analysis):")
+    logger.info(f"   📁 المجلدات:    {timings.get('directories', 0)*1000:>6.0f}ms ({timings.get('directories', 0)/total_time*100:>4.1f}%)")
+    logger.info(f"   🗄️  قاعدة البيانات: {timings.get('database', 0)*1000:>6.0f}ms ({timings.get('database', 0)/total_time*100:>4.1f}%)")
+    logger.info(f"   🎯 نموذج الكشف:  {timings.get('model_load', 0)*1000:>6.0f}ms ({timings.get('model_load', 0)/total_time*100:>4.1f}%) ← الأبطأ")
+    logger.info(f"   🔄 Pipeline:    {timings.get('pipeline', 0)*1000:>6.0f}ms ({timings.get('pipeline', 0)/total_time*100:>4.1f}%)")
+    logger.info(f"   ─────────────────────────")
+    logger.info(f"   ⏱️  الإجمالي:     {total_time*1000:>6.0f}ms")
     logger.info("=" * 50)
     logger.info("✅ نظام نظرة جاهز للعمل!")
     logger.info(f"📖 التوثيق: http://localhost:8000{settings.API_V1_PREFIX}/docs")
@@ -165,6 +207,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     
+    # إيقاف ThreadPoolExecutor في stream router
+    try:
+        from app.routers.stream import executor
+        executor.shutdown(wait=False)
+        logger.info("⏹️ تم إيقاف ThreadPoolExecutor")
+    except Exception:
+        pass
+    
     # إغلاق قاعدة البيانات
     await close_db()
     
@@ -184,6 +234,18 @@ app = FastAPI(
     openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
     lifespan=lifespan,
 )
+
+# ===============================
+# إعداد Rate Limiting
+# ===============================
+if RATE_LIMIT_AVAILABLE:
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    logger.info("🛡️ Rate Limiting مفعّل")
+else:
+    limiter = None
+    logger.warning("⚠️ slowapi غير مثبت - Rate Limiting معطّل")
 
 
 # ===============================

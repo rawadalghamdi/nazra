@@ -57,6 +57,15 @@ models/
 # الوسائط المرفوعة
 uploads/
 alerts/
+snapshots/
+data/
 
 # Docker
 .docker/
+
+# Keep empty directories (allow .gitkeep files)
+!alerts/.gitkeep
+!logs/.gitkeep
+!uploads/.gitkeep
+!snapshots/.gitkeep
+!data/.gitkeep
