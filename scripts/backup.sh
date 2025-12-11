@@ -22,20 +22,20 @@ mkdir -p "${BACKUP_DIR}"
 
 # نسخ قاعدة البيانات
 echo -e "${BLUE}[INFO]${NC} نسخ قاعدة البيانات..."
-if [ -f "./backend/data/nazra.db" ]; then
-    cp "./backend/data/nazra.db" "${BACKUP_DIR}/${BACKUP_NAME}_database.db"
+if [ -f "./data/nazra.db" ]; then
+    cp "./data/nazra.db" "${BACKUP_DIR}/${BACKUP_NAME}_database.db"
 fi
 
 # نسخ التنبيهات
 echo -e "${BLUE}[INFO]${NC} نسخ التنبيهات..."
-if [ -d "./backend/alerts" ]; then
-    tar -czf "${BACKUP_DIR}/${BACKUP_NAME}_alerts.tar.gz" -C "./backend" alerts/
+if [ -d "./alerts" ]; then
+    tar -czf "${BACKUP_DIR}/${BACKUP_NAME}_alerts.tar.gz" -C "." alerts/
 fi
 
 # نسخ اللقطات
 echo -e "${BLUE}[INFO]${NC} نسخ اللقطات..."
-if [ -d "./backend/snapshots" ]; then
-    tar -czf "${BACKUP_DIR}/${BACKUP_NAME}_snapshots.tar.gz" -C "./backend" snapshots/
+if [ -d "./snapshots" ]; then
+    tar -czf "${BACKUP_DIR}/${BACKUP_NAME}_snapshots.tar.gz" -C "." snapshots/
 fi
 
 # نسخ الإعدادات

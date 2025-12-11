@@ -54,19 +54,20 @@ tar -xzf "$BACKUP_FILE" -C "${RESTORE_DIR}"
 # استعادة قاعدة البيانات
 if ls "${RESTORE_DIR}"/*_database.db 1> /dev/null 2>&1; then
     echo -e "${BLUE}[INFO]${NC} استعادة قاعدة البيانات..."
-    cp "${RESTORE_DIR}"/*_database.db "./backend/data/nazra.db"
+    mkdir -p "./data"
+    cp "${RESTORE_DIR}"/*_database.db "./data/nazra.db"
 fi
 
 # استعادة التنبيهات
 if ls "${RESTORE_DIR}"/*_alerts.tar.gz 1> /dev/null 2>&1; then
     echo -e "${BLUE}[INFO]${NC} استعادة التنبيهات..."
-    tar -xzf "${RESTORE_DIR}"/*_alerts.tar.gz -C "./backend/"
+    tar -xzf "${RESTORE_DIR}"/*_alerts.tar.gz -C "./"
 fi
 
 # استعادة اللقطات
 if ls "${RESTORE_DIR}"/*_snapshots.tar.gz 1> /dev/null 2>&1; then
     echo -e "${BLUE}[INFO]${NC} استعادة اللقطات..."
-    tar -xzf "${RESTORE_DIR}"/*_snapshots.tar.gz -C "./backend/"
+    tar -xzf "${RESTORE_DIR}"/*_snapshots.tar.gz -C "./"
 fi
 
 # تنظيف

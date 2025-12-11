@@ -63,6 +63,9 @@ data/
 # Docker
 .docker/
 
+# النسخ الاحتياطية
+backups/
+
 # Keep empty directories (allow .gitkeep files)
 !alerts/.gitkeep
 !logs/.gitkeep
