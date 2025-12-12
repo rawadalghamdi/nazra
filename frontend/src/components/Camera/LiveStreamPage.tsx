@@ -37,10 +37,77 @@ function LiveStreamPage() {
       setIsLoading(true);
       setError(null);
       const data = await cameraService.getAll();
-      setCameras(data);
+      
+      // إضافة كاميرات المحاكاة (Simulation Cameras)
+      const nowIso = new Date().toISOString();
+      const simulationCameras: Camera[] = [
+        {
+        id: 'simulation',
+        name: '🔫 محاكاة مسدس',
+        location: 'فيديو تجريبي - مسدس',
+        status: 'online',
+        isRecording: false,
+        detectionEnabled: true,
+        sensitivity: 75,
+        resolution: '720p',
+        fps: 24,
+        rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=pistol_video_simulation.mp4',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+        {
+          id: 'simulation-knife',
+          name: '🔪 محاكاة سكين',
+          location: 'knife_video_simulation.mp4',
+          status: 'online',
+          isRecording: false,
+          detectionEnabled: true,
+          sensitivity: 75,
+          resolution: '720p',
+          fps: 24,
+          rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=knife_video_simulation.mp4',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+      ];
+      
+      setCameras([...simulationCameras, ...data]);
     } catch (err) {
       console.error('خطأ في جلب الكاميرات:', err);
-      setError('حدث خطأ أثناء جلب الكاميرات');
+      // حتى في حالة الخطأ، أضف كاميرات المحاكاة
+      const nowIso = new Date().toISOString();
+      const simulationCameras: Camera[] = [
+        {
+        id: 'simulation',
+        name: '🔫 محاكاة مسدس',
+        location: 'فيديو تجريبي - مسدس',
+        status: 'online',
+        isRecording: false,
+        detectionEnabled: true,
+        sensitivity: 75,
+        resolution: '720p',
+        fps: 24,
+        rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=pistol_video_simulation.mp4',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+        {
+          id: 'simulation-knife',
+          name: '🔪 محاكاة سكين',
+          location: 'knife_video_simulation.mp4',
+          status: 'online',
+          isRecording: false,
+          detectionEnabled: true,
+          sensitivity: 75,
+          resolution: '720p',
+          fps: 24,
+          rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=knife_video_simulation.mp4',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        },
+      ];
+      setCameras(simulationCameras);
+      setError(null); // لا تُظهر الخطأ لأن المحاكاة متاحة
     } finally {
       setIsLoading(false);
     }

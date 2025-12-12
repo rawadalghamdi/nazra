@@ -21,7 +21,7 @@ import logging
 import time
 
 # إعداد السجل
-logger = logging.getLogger("نظرة.WebSocket")
+logger = logging.getLogger("nazra.websocket")
 
 router = APIRouter(tags=["WebSocket"])
 
@@ -98,7 +98,7 @@ class ConnectionManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"❌ خطأ في Heartbeat: {e}")
+                logger.error(f"Heartbeat error: {e}")
     
     async def _status_broadcast_loop(self):
         """بث حالة النظام بشكل دوري"""
@@ -109,7 +109,7 @@ class ConnectionManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"❌ خطأ في بث الحالة: {e}")
+                logger.error(f"Status broadcast error: {e}")
     
     async def _check_connections(self):
         """التحقق من صحة الاتصالات"""
@@ -130,9 +130,9 @@ class ConnectionManager:
                 except Exception:
                     stale_connections.append(websocket)
         
-        # تنظيف الاتصالات المتوقفة
+        # Clean up stale connections
         for conn in stale_connections:
-            logger.warning(f"⚠️ اتصال متوقف، جاري التنظيف...")
+            logger.warning("Stale connection, cleaning up...")
             self.disconnect(conn)
     
     async def connect(self, websocket: WebSocket, client_info: dict = None):
@@ -158,7 +158,7 @@ class ConnectionManager:
         # بدء المهام الخلفية إذا لم تكن قيد التشغيل
         await self.start_background_tasks()
         
-        logger.info(f"🔗 اتصال جديد - إجمالي الاتصالات: {len(self.active_connections)}")
+        logger.info(f"New connection - Total: {len(self.active_connections)}")
     
     async def _flush_message_queue(self, websocket: WebSocket, client_id: str):
         """إرسال الرسائل المتراكمة للعميل"""
@@ -203,7 +203,7 @@ class ConnectionManager:
         # إزالة معلومات الاتصال
         self.connection_info.pop(websocket, None)
         
-        logger.info(f"🔌 قطع الاتصال - إجمالي الاتصالات: {len(self.active_connections)}")
+        logger.info(f"Disconnected - Total: {len(self.active_connections)}")
     
     def update_heartbeat(self, websocket: WebSocket):
         """تحديث وقت آخر نبضة قلب"""
@@ -214,14 +214,14 @@ class ConnectionManager:
         الاشتراك في التنبيهات المباشرة
         """
         self.alert_subscribers.add(websocket)
-        logger.info(f"📢 اشتراك في التنبيهات - إجمالي المشتركين: {len(self.alert_subscribers)}")
+        logger.info(f"Subscribed to alerts - Total: {len(self.alert_subscribers)}")
     
     def unsubscribe_alerts(self, websocket: WebSocket):
         """
         إلغاء الاشتراك من التنبيهات
         """
         self.alert_subscribers.discard(websocket)
-        logger.info(f"🔕 إلغاء اشتراك التنبيهات - إجمالي المشتركين: {len(self.alert_subscribers)}")
+        logger.info(f"Unsubscribed from alerts - Total: {len(self.alert_subscribers)}")
     
     def subscribe_camera(self, websocket: WebSocket, camera_id: str):
         """
@@ -230,7 +230,7 @@ class ConnectionManager:
         if camera_id not in self.camera_subscribers:
             self.camera_subscribers[camera_id] = set()
         self.camera_subscribers[camera_id].add(websocket)
-        logger.info(f"📷 اشتراك في كاميرا {camera_id} - المشتركين: {len(self.camera_subscribers[camera_id])}")
+        logger.info(f"Subscribed to camera {camera_id} - Total: {len(self.camera_subscribers[camera_id])}")
     
     def unsubscribe_camera(self, websocket: WebSocket, camera_id: str):
         """
@@ -240,7 +240,7 @@ class ConnectionManager:
             self.camera_subscribers[camera_id].discard(websocket)
             if not self.camera_subscribers[camera_id]:
                 del self.camera_subscribers[camera_id]
-            logger.info(f"📷 إلغاء اشتراك من كاميرا {camera_id}")
+            logger.info(f"Unsubscribed from camera {camera_id}")
     
     async def send_personal(self, websocket: WebSocket, message: dict):
         """
@@ -249,7 +249,7 @@ class ConnectionManager:
         try:
             await websocket.send_json(message)
         except Exception as e:
-            logger.error(f"❌ خطأ في الإرسال: {e}")
+            logger.error(f"Send error: {e}")
             self.disconnect(websocket)
     
     async def broadcast(self, message: dict):
@@ -307,7 +307,7 @@ class ConnectionManager:
             if result is not None and not isinstance(result, Exception):
                 self.disconnect(result)
         
-        logger.info(f"📢 تم بث تنبيه لـ {len(self.alert_subscribers)} مشترك")
+        logger.info(f"Alert broadcast to {len(self.alert_subscribers)} subscriber(s)")
     
     async def broadcast_to_camera(self, camera_id: str, message: dict):
         """
@@ -504,9 +504,9 @@ async def websocket_alerts(websocket: WebSocket):
                 })
                 
     except WebSocketDisconnect:
-        logger.info("🔌 قطع اتصال WebSocket التنبيهات")
+        logger.info("Alerts WebSocket disconnected")
     except Exception as e:
-        logger.error(f"❌ خطأ في WebSocket: {e}")
+        logger.error(f"WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
 
@@ -577,9 +577,9 @@ async def websocket_stream(websocket: WebSocket, camera_id: str):
                 })
                 
     except WebSocketDisconnect:
-        logger.info(f"🔌 قطع اتصال بث الكاميرا: {camera_id}")
+        logger.info(f"Camera stream disconnected: {camera_id}")
     except Exception as e:
-        logger.error(f"❌ خطأ في WebSocket البث: {e}")
+        logger.error(f"Stream WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
 
@@ -668,9 +668,9 @@ async def websocket_general(websocket: WebSocket):
                 })
                 
     except WebSocketDisconnect:
-        logger.info("🔌 قطع اتصال WebSocket العام")
+        logger.info("General WebSocket disconnected")
     except Exception as e:
-        logger.error(f"❌ خطأ في WebSocket: {e}")
+        logger.error(f"WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
 
@@ -811,7 +811,7 @@ async def websocket_detection(websocket: WebSocket, camera_id: str):
             "timestamp": datetime.utcnow().isoformat()
         })
         
-        logger.info(f"🔗 اتصال جديد للكشف: {camera_id}")
+        logger.info(f"Detection connection: {camera_id}")
         
         while True:
             try:
@@ -834,9 +834,9 @@ async def websocket_detection(websocket: WebSocket, camera_id: str):
                 pass
                 
     except WebSocketDisconnect:
-        logger.info(f"🔌 قطع اتصال كشف الكاميرا: {camera_id}")
+        logger.info(f"Detection disconnected: {camera_id}")
     except Exception as e:
-        logger.error(f"❌ خطأ في WebSocket الكشف: {e}")
+        logger.error(f"Detection WebSocket error: {e}")
     finally:
         manager.disconnect(websocket)
 

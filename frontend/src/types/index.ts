@@ -16,6 +16,7 @@ export type DetectionType = 'weapon' | 'knife' | 'suspicious_object';
 // واجهة التنبيه الكاملة
 export interface Alert {
   id: string;
+  incidentId?: string;                   // معرف الحادثة المرتبطة
   cameraId: string;
   cameraName: string;                    // "كاميرا البوابة الرئيسية"
   location: string;                      // "المدخل الشمالي - المبنى A"
@@ -39,6 +40,93 @@ export interface Alert {
   resolvedBy?: string;
   resolvedAt?: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// أنواع الحوادث
+// ─────────────────────────────────────────────────────────────────────────────
+export type IncidentStatus = 'نشطة' | 'مغلقة' | 'تمت المراجعة' | 'مؤكدة' | 'إنذار كاذب';
+
+// واجهة الحادثة - تجمع التنبيهات المتعلقة
+export interface Incident {
+  id: string;
+  cameraId: string;
+  cameraName: string;
+  location?: string;
+  primaryWeaponType: WeaponType;
+  status: IncidentStatus;
+  severity?: AlertSeverity;
+  
+  // إحصائيات
+  alertCount: number;
+  detectionCount: number;
+  maxConfidence: number;
+  avgConfidence: number;
+  
+  // الصور
+  bestSnapshot?: string;
+  thumbnail?: string;
+  
+  // الفترة الزمنية
+  startedAt: string;
+  lastDetectionAt?: string;
+  endedAt?: string;
+  
+  // المراجعة
+  reviewedBy?: string;
+  reviewedAt?: string;
+  notes?: string;
+  
+  // التنبيهات المرتبطة (اختياري - للتفاصيل)
+  alerts?: Alert[];
+}
+
+// ملخص الحوادث لكل كاميرا
+export interface CameraIncidentsSummary {
+  cameraId: string;
+  cameraName: string;
+  location?: string;
+  activeIncidents: number;
+  totalIncidents: number;
+  totalAlerts: number;
+  lastIncidentAt?: string;
+  incidents: Incident[];
+}
+
+// الحوادث مجمعة حسب الكاميرا
+export interface IncidentsByCamera {
+  cameras: CameraIncidentsSummary[];
+  totalCameras: number;
+  totalActiveIncidents: number;
+  totalAlerts: number;
+}
+
+// إحصائيات الحوادث
+export interface IncidentStats {
+  totalActive: number;
+  totalToday: number;
+  totalReviewed: number;
+  totalConfirmed: number;
+  totalFalseAlarms: number;
+  camerasWithIncidents: number;
+}
+
+// ألوان حالات الحوادث
+export const IncidentStatusColors: Record<IncidentStatus, string> = {
+  'نشطة': '#DC2626',           // أحمر - نشطة
+  'مغلقة': '#6B7280',          // رمادي - مغلقة
+  'تمت المراجعة': '#F59E0B',   // برتقالي - قيد المراجعة
+  'مؤكدة': '#EA580C',          // برتقالي داكن - مؤكدة
+  'إنذار كاذب': '#16A34A'      // أخضر - إنذار كاذب
+};
+
+// أيقونات حالات الحوادث
+export const IncidentStatusIcons: Record<IncidentStatus, string> = {
+  'نشطة': '🔴',
+  'مغلقة': '⚪',
+  'تمت المراجعة': '🟡',
+  'مؤكدة': '🟠',
+  'إنذار كاذب': '🟢'
+};
 
 // خريطة حالات التنبيه بين العربية والإنجليزية
 export const AlertStatusMap: Record<AlertStatus, AlertStatusEn> = {

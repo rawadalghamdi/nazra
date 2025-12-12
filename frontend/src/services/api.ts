@@ -1,5 +1,8 @@
 import axios from 'axios';
-import type { Camera, Alert, DashboardStats, SystemSettings } from '../types';
+import type { 
+  Camera, Alert, DashboardStats, SystemSettings,
+  Incident, IncidentsByCamera, IncidentStats 
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -104,43 +107,49 @@ export const alertService = {
     limit?: number;
   }): Promise<{ alerts: Alert[]; total: number }> => {
     const response = await api.get('/alerts', { params });
-    return response.data;
+    console.log('📋 [alertService.getAll] Raw API response:', response.data.alerts?.length, response.data.alerts?.[0]);
+    const transformed = response.data.alerts.map(transformAlertFromBackend);
+    console.log('📋 [alertService.getAll] After transform:', transformed?.length, transformed?.[0]);
+    return {
+      alerts: transformed,
+      total: response.data.total,
+    };
   },
 
   // جلب تنبيه محدد
   getById: async (id: string): Promise<Alert> => {
     const response = await api.get(`/alerts/${id}`);
-    return response.data;
+    return transformAlertFromBackend(response.data);
   },
 
   // تأكيد استلام تنبيه
   acknowledge: async (id: string): Promise<Alert> => {
     const response = await api.patch(`/alerts/${id}/acknowledge`);
-    return response.data;
+    return transformAlertFromBackend(response.data);
   },
 
   // حل تنبيه
   resolve: async (id: string, notes?: string): Promise<Alert> => {
     const response = await api.patch(`/alerts/${id}/resolve`, { notes });
-    return response.data;
+    return transformAlertFromBackend(response.data);
   },
 
   // تصنيف كإنذار كاذب
   markFalsePositive: async (id: string, notes?: string): Promise<Alert> => {
     const response = await api.patch(`/alerts/${id}/false-positive`, { notes });
-    return response.data;
+    return transformAlertFromBackend(response.data);
   },
 
   // تحديث حالة التنبيه
   updateStatus: async (id: string, status: string, notes?: string): Promise<Alert> => {
     const response = await api.patch(`/alerts/${id}/status`, { status, notes });
-    return response.data;
+    return transformAlertFromBackend(response.data);
   },
 
   // إضافة ملاحظة للتنبيه
   addNote: async (id: string, note: string): Promise<Alert> => {
     const response = await api.patch(`/alerts/${id}/note`, { note });
-    return response.data;
+    return transformAlertFromBackend(response.data);
   },
 
   // جلب صورة التنبيه
@@ -172,15 +181,145 @@ export const alertService = {
   // جلب إحصائيات التنبيهات
   getStats: async (): Promise<{
     total: number;
-    new: number;
-    reviewing: number;
+    pending: number;
+    under_review: number;
     confirmed: number;
-    falsePositive: number;
-    today: number;
-    thisWeek: number;
+    false_alarms: number;
+    total_today: number;
   }> => {
     const response = await api.get('/alerts/stats');
-    return response.data;
+    // API يرجع: total_today, pending, confirmed, false_alarms, under_review
+    return {
+      total: response.data.total_today || 0,
+      pending: response.data.pending || 0,
+      under_review: response.data.under_review || 0,
+      confirmed: response.data.confirmed || 0,
+      false_alarms: response.data.false_alarms || 0,
+      total_today: response.data.total_today || 0,
+    };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// خدمات الحوادث - Incidents Service
+// ─────────────────────────────────────────────────────────────────────────────
+
+// تحويل بيانات الحادثة من الباك إند
+const transformIncidentFromBackend = (data: any): Incident => {
+  const severityMap: Record<string, string> = {
+    'حرج': 'critical',
+    'عالي': 'high',
+    'متوسط': 'medium',
+    'منخفض': 'low',
+  };
+
+  return {
+    id: data.id,
+    cameraId: data.camera_id,
+    cameraName: data.camera_name || 'كاميرا غير معروفة',
+    location: data.location,
+    primaryWeaponType: data.primary_weapon_type || 'مسدس',
+    status: data.status || 'نشطة',
+    severity: (severityMap[data.severity] || data.severity || 'high') as any,
+    alertCount: data.alert_count || 0,
+    detectionCount: data.detection_count || 0,
+    maxConfidence: data.max_confidence || 0,
+    avgConfidence: data.avg_confidence || 0,
+    bestSnapshot: data.best_snapshot,
+    thumbnail: data.thumbnail,
+    startedAt: data.started_at,
+    lastDetectionAt: data.last_detection_at,
+    endedAt: data.ended_at,
+    reviewedBy: data.reviewed_by,
+    reviewedAt: data.reviewed_at,
+    notes: data.notes,
+    alerts: data.alerts?.map(transformAlertFromBackend),
+  };
+};
+
+export const incidentService = {
+  // جلب جميع الحوادث
+  getAll: async (params?: {
+    status?: string;
+    cameraId?: string;
+    weaponType?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ incidents: Incident[]; total: number; pages: number }> => {
+    const response = await api.get('/incidents', { params });
+    return {
+      incidents: response.data.incidents.map(transformIncidentFromBackend),
+      total: response.data.total,
+      pages: response.data.pages,
+    };
+  },
+
+  // جلب الحوادث مجمعة حسب الكاميرا (العرض الرئيسي)
+  getByCamera: async (activeOnly: boolean = false): Promise<IncidentsByCamera> => {
+    const response = await api.get('/incidents/by-camera', { 
+      params: { active_only: activeOnly } 
+    });
+    return {
+      cameras: response.data.cameras.map((cam: any) => ({
+        cameraId: cam.camera_id,
+        cameraName: cam.camera_name,
+        location: cam.location,
+        activeIncidents: cam.active_incidents,
+        totalIncidents: cam.total_incidents,
+        totalAlerts: cam.total_alerts,
+        lastIncidentAt: cam.last_incident_at,
+        incidents: cam.incidents.map(transformIncidentFromBackend),
+      })),
+      totalCameras: response.data.total_cameras,
+      totalActiveIncidents: response.data.total_active_incidents,
+      totalAlerts: response.data.total_alerts,
+    };
+  },
+
+  // جلب حادثة محددة مع التنبيهات
+  getById: async (id: string): Promise<Incident> => {
+    const response = await api.get(`/incidents/${id}`);
+    return transformIncidentFromBackend(response.data);
+  },
+
+  // جلب إحصائيات الحوادث
+  getStats: async (): Promise<IncidentStats> => {
+    const response = await api.get('/incidents/stats');
+    return {
+      totalActive: response.data.total_active,
+      totalToday: response.data.total_today,
+      totalReviewed: response.data.total_reviewed,
+      totalConfirmed: response.data.total_confirmed,
+      totalFalseAlarms: response.data.total_false_alarms,
+      camerasWithIncidents: response.data.cameras_with_incidents,
+    };
+  },
+
+  // مراجعة حادثة
+  review: async (id: string, data: {
+    status: 'تمت المراجعة' | 'مؤكدة' | 'إنذار كاذب';
+    notes?: string;
+    reviewedBy: string;
+  }): Promise<Incident> => {
+    const response = await api.put(`/incidents/${id}/review`, {
+      status: data.status,
+      notes: data.notes,
+      reviewed_by: data.reviewedBy,
+    });
+    return transformIncidentFromBackend(response.data);
+  },
+
+  // إغلاق حادثة
+  close: async (id: string): Promise<Incident> => {
+    const response = await api.put(`/incidents/${id}/close`);
+    return transformIncidentFromBackend(response.data);
+  },
+
+  // حذف حادثة
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/incidents/${id}`);
   },
 };
 
@@ -332,7 +471,7 @@ const transformAlertFromBackend = (data: any): Alert => {
     detectionType: (weaponToDetectionType[data.weapon_type] || 'weapon') as any,
     severity: (severityMap[data.severity] || 'high') as any,
     status: data.status || 'جديد',
-    confidence: Math.round((data.confidence || 0) * 100),
+    confidence: data.confidence || 0,  // Keep as 0-1 float
     imageSnapshot: data.image_snapshot || data.image_url || '',
     videoClip: data.video_clip || data.video_clip_url || '',
     boundingBox: data.bounding_box || { x: 0, y: 0, width: 0, height: 0 },

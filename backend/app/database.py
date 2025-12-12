@@ -12,7 +12,7 @@ import logging
 from app.config import settings
 
 # إعداد السجل
-logger = logging.getLogger("نظرة.قاعدة_البيانات")
+logger = logging.getLogger("nazra.database")
 
 # إنشاء Base للنماذج
 Base = declarative_base()
@@ -41,22 +41,22 @@ async def init_db() -> None:
     """
     from app.models import alert, camera, user  # استيراد النماذج
     
-    logger.info("🗄️ جاري تهيئة قاعدة البيانات...")
+    logger.info("Initializing database...")
     
     async with engine.begin() as conn:
         # إنشاء جميع الجداول
         await conn.run_sync(Base.metadata.create_all)
     
-    logger.info("✅ تم تهيئة قاعدة البيانات بنجاح")
+    logger.info("Database initialized successfully")
 
 
 async def close_db() -> None:
     """
     إغلاق اتصالات قاعدة البيانات
     """
-    logger.info("🔒 جاري إغلاق اتصالات قاعدة البيانات...")
+    logger.info("Closing database connections...")
     await engine.dispose()
-    logger.info("✅ تم إغلاق اتصالات قاعدة البيانات")
+    logger.info("Database connections closed")
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -70,7 +70,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.commit()
         except Exception as e:
             await session.rollback()
-            logger.error(f"❌ خطأ في قاعدة البيانات: {e}")
+            logger.error(f"Database error: {e}")
             raise
         finally:
             await session.close()
@@ -93,10 +93,10 @@ async def seed_demo_data() -> None:
         count = result.scalar()
         
         if count > 0:
-            logger.info("📊 البيانات التجريبية موجودة بالفعل")
+            logger.info("Demo data already exists")
             return
         
-        logger.info("📝 جاري إضافة بيانات تجريبية...")
+        logger.info("Adding demo data...")
         
         # إضافة كاميرات تجريبية
         cameras = [
@@ -164,4 +164,4 @@ async def seed_demo_data() -> None:
         
         await session.commit()
         
-        logger.info("✅ تم إضافة البيانات التجريبية بنجاح")
+        logger.info("Demo data added successfully")

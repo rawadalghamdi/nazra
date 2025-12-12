@@ -106,10 +106,62 @@ function CameraGrid({
         hasAlert: false, // سيتم تحديثها من التنبيهات
         alertCount: 0,
       }));
-      setCameras(cameraCardData);
+      
+      // إضافة كاميرات المحاكاة (Simulation Cameras)
+      const simulationCameras: CameraCardData[] = [
+        {
+        id: 'simulation',
+        name: '🔫 محاكاة مسدس',
+        location: 'فيديو تجريبي - مسدس',
+        status: 'online',
+        isRecording: false,
+        resolution: '720p',
+        rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=pistol_video_simulation.mp4',
+          hasAlert: false,
+          alertCount: 0,
+        },
+        {
+          id: 'simulation-knife',
+          name: '🔪 محاكاة سكين',
+          location: 'knife_video_simulation.mp4',
+          status: 'online',
+          isRecording: false,
+          resolution: '720p',
+          rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=knife_video_simulation.mp4',
+          hasAlert: false,
+          alertCount: 0,
+        },
+      ];
+      
+      setCameras([...simulationCameras, ...cameraCardData]);
     } catch (error) {
       console.error('خطأ في جلب الكاميرات:', error);
-      setCameras([]);
+      // حتى في حالة الخطأ، أضف كاميرات المحاكاة
+      const simulationCameras: CameraCardData[] = [
+        {
+        id: 'simulation',
+        name: '🔫 محاكاة مسدس',
+        location: 'فيديو تجريبي - مسدس',
+        status: 'online',
+        isRecording: false,
+        resolution: '720p',
+        rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=pistol_video_simulation.mp4',
+          hasAlert: false,
+          alertCount: 0,
+        },
+        {
+          id: 'simulation-knife',
+          name: '🔪 محاكاة سكين',
+          location: 'knife_video_simulation.mp4',
+          status: 'online',
+          isRecording: false,
+          resolution: '720p',
+          rtspUrl: 'http://localhost:8000/api/v1/stream/simulation/stream?video=knife_video_simulation.mp4',
+          hasAlert: false,
+          alertCount: 0,
+        },
+      ];
+      setCameras(simulationCameras);
     } finally {
       setIsLoading(false);
     }
@@ -142,6 +194,10 @@ function CameraGrid({
   };
 
   const handleCameraClick = (cameraId: string) => {
+    // كاميرا المحاكاة لا تحتاج للتنقل - فقط عرض في الشبكة
+    if (cameraId.startsWith('simulation')) {
+      return;
+    }
     if (onCameraClick) {
       onCameraClick(cameraId);
     } else {

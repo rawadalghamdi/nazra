@@ -34,6 +34,7 @@ from app.routers.websocket import router as websocket_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.detection import router as detection_router
 from app.routers.live_stream import router as live_stream_router
+from app.routers.incidents import router as incidents_router
 
 # إعداد التسجيل
 logging.basicConfig(
@@ -43,7 +44,7 @@ logging.basicConfig(
         logging.StreamHandler(),
     ]
 )
-logger = logging.getLogger("نظرة")
+logger = logging.getLogger("nazra")
 
 
 @asynccontextmanager
@@ -65,29 +66,29 @@ async def lifespan(app: FastAPI):
     timings = {}
     
     # ===============================
-    # عند بدء التشغيل
+    # Startup
     # ===============================
     logger.info("=" * 50)
-    logger.info("🚀 بدء تشغيل نظام نظرة...")
-    logger.info(f"📅 التاريخ: {datetime.utcnow().isoformat()}")
-    logger.info(f"🔧 وضع التطوير: {settings.DEBUG}")
+    logger.info("Starting Nazra System...")
+    logger.info(f"Time: {datetime.utcnow().isoformat()}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info("=" * 50)
     
-    # ⚡ المرحلة 1: المهام السريعة (متوازية)
+    # Phase 1: Create directories
     t0 = perf_time.time()
     os.makedirs(get_data_dir(), exist_ok=True)
     os.makedirs(get_alerts_dir(), exist_ok=True)
     os.makedirs(get_snapshots_dir(), exist_ok=True)
     timings["directories"] = perf_time.time() - t0
-    logger.info(f"📁 تم إنشاء المجلدات ({timings['directories']*1000:.0f}ms)")
+    logger.info(f"Directories ready ({timings['directories']*1000:.0f}ms)")
     
-    # ⚡ المرحلة 2: تهيئة قاعدة البيانات
+    # Phase 2: Initialize database
     t0 = perf_time.time()
     await init_db()
     timings["database"] = perf_time.time() - t0
-    logger.info(f"✅ تم تهيئة قاعدة البيانات ({timings['database']*1000:.0f}ms)")
+    logger.info(f"Database ready ({timings['database']*1000:.0f}ms)")
     
-    # ⚡ المرحلة 3: تحميل نموذج الكشف (الأبطأ - 60% من وقت البدء)
+    # Phase 3: Load detection model
     t0 = perf_time.time()
     detector = None
     try:
@@ -95,12 +96,12 @@ async def lifespan(app: FastAPI):
         detector = await get_detector()
         timings["model_load"] = perf_time.time() - t0
         if detector.is_loaded:
-            logger.info(f"🎯 تم تحميل نموذج الكشف ({timings['model_load']:.1f}s) - الجهاز: {detector.device}")
+            logger.info(f"Detection model loaded ({timings['model_load']:.1f}s) - Device: {detector.device}")
         else:
-            logger.warning("⚠️ نموذج الكشف غير متوفر")
+            logger.warning("Detection model not available")
     except Exception as e:
         timings["model_load"] = perf_time.time() - t0
-        logger.warning(f"⚠️ تعذر تحميل نموذج الكشف ({timings['model_load']:.1f}s): {e}")
+        logger.warning(f"Failed to load detection model ({timings['model_load']:.1f}s): {e}")
     
     # ⚡ المرحلة 4: بدء Detection Pipeline
     t0 = perf_time.time()
@@ -114,9 +115,9 @@ async def lifespan(app: FastAPI):
         # بدء Pipeline
         pipeline = await start_pipeline()
         
-        # ربط callback لبث النتائج عبر WebSocket
+        # Callback for WebSocket broadcast
         async def on_pipeline_result(result):
-            """إرسال نتائج الكشف عبر WebSocket"""
+            """Send detection results via WebSocket"""
             try:
                 result_dict = {
                     "camera_id": result.camera_id,
@@ -127,9 +128,9 @@ async def lifespan(app: FastAPI):
                 await push_detection_result(result_dict)
                 
                 if result.detections:
-                    logger.info(f"🎯 كشف {len(result.detections)} كائن في {result.camera_id}")
+                    logger.info(f"Detected {len(result.detections)} object(s) in {result.camera_id}")
             except Exception as e:
-                logger.error(f"❌ خطأ في بث الكشف: {e}")
+                logger.error(f"Detection broadcast error: {e}")
         
         pipeline.add_result_callback(on_pipeline_result)
         
@@ -151,74 +152,74 @@ async def lifespan(app: FastAPI):
                 ]
                 await asyncio.gather(*camera_tasks, return_exceptions=True)
             
-            logger.info(f"🔍 Pipeline: {len(cameras)} كاميرا نشطة")
+            logger.info(f"Pipeline: {len(cameras)} active camera(s)")
         
         timings["pipeline"] = perf_time.time() - t0
-        logger.info(f"✅ Detection Pipeline جاهز ({timings['pipeline']:.1f}s)")
+        logger.info(f"Detection Pipeline ready ({timings['pipeline']:.1f}s)")
         
     except Exception as e:
         timings["pipeline"] = perf_time.time() - t0
-        logger.warning(f"⚠️ تعذر بدء Detection Pipeline ({timings['pipeline']:.1f}s): {e}")
+        logger.warning(f"Failed to start Detection Pipeline ({timings['pipeline']:.1f}s): {e}")
         import traceback
         traceback.print_exc()
     
-    # ⚡ ملخص الأداء
+    # Performance summary
     total_time = perf_time.time() - startup_start
     logger.info("=" * 50)
-    logger.info("📊 ملخص بدء التشغيل (Pareto Analysis):")
-    logger.info(f"   📁 المجلدات:    {timings.get('directories', 0)*1000:>6.0f}ms ({timings.get('directories', 0)/total_time*100:>4.1f}%)")
-    logger.info(f"   🗄️  قاعدة البيانات: {timings.get('database', 0)*1000:>6.0f}ms ({timings.get('database', 0)/total_time*100:>4.1f}%)")
-    logger.info(f"   🎯 نموذج الكشف:  {timings.get('model_load', 0)*1000:>6.0f}ms ({timings.get('model_load', 0)/total_time*100:>4.1f}%) ← الأبطأ")
-    logger.info(f"   🔄 Pipeline:    {timings.get('pipeline', 0)*1000:>6.0f}ms ({timings.get('pipeline', 0)/total_time*100:>4.1f}%)")
+    logger.info("Startup Summary:")
+    logger.info(f"   Directories:  {timings.get('directories', 0)*1000:>6.0f}ms ({timings.get('directories', 0)/total_time*100:>4.1f}%)")
+    logger.info(f"   Database:     {timings.get('database', 0)*1000:>6.0f}ms ({timings.get('database', 0)/total_time*100:>4.1f}%)")
+    logger.info(f"   Model:        {timings.get('model_load', 0)*1000:>6.0f}ms ({timings.get('model_load', 0)/total_time*100:>4.1f}%)")
+    logger.info(f"   Pipeline:     {timings.get('pipeline', 0)*1000:>6.0f}ms ({timings.get('pipeline', 0)/total_time*100:>4.1f}%)")
     logger.info(f"   ─────────────────────────")
-    logger.info(f"   ⏱️  الإجمالي:     {total_time*1000:>6.0f}ms")
+    logger.info(f"   Total:        {total_time*1000:>6.0f}ms")
     logger.info("=" * 50)
-    logger.info("✅ نظام نظرة جاهز للعمل!")
-    logger.info(f"📖 التوثيق: http://localhost:8000{settings.API_V1_PREFIX}/docs")
+    logger.info("Nazra System Ready!")
+    logger.info(f"API Docs: http://localhost:8000{settings.API_V1_PREFIX}/docs")
     logger.info("=" * 50)
     
     yield
     
     # ===============================
-    # عند الإغلاق
+    # Shutdown
     # ===============================
     logger.info("=" * 50)
-    logger.info("👋 جاري إيقاف نظام نظرة...")
+    logger.info("Shutting down Nazra System...")
     
-    # إيقاف Detection Pipeline
+    # Stop Detection Pipeline
     try:
         from app.services.detection_pipeline import stop_pipeline
         await stop_pipeline()
-        logger.info("⏹️ تم إيقاف Detection Pipeline")
+        logger.info("Detection Pipeline stopped")
     except Exception:
         pass
     
-    # إيقاف محرك الكشف
+    # Stop detector
     try:
         from app.services.detector import shutdown_detector
         await shutdown_detector()
     except Exception:
         pass
     
-    # إيقاف مدير الكاميرات
+    # Stop camera manager
     try:
         from app.services.camera_manager import shutdown_camera_manager
         await shutdown_camera_manager()
     except Exception:
         pass
     
-    # إيقاف ThreadPoolExecutor في stream router
+    # Stop ThreadPoolExecutor
     try:
         from app.routers.stream import executor
         executor.shutdown(wait=False)
-        logger.info("⏹️ تم إيقاف ThreadPoolExecutor")
+        logger.info("ThreadPool stopped")
     except Exception:
         pass
     
-    # إغلاق قاعدة البيانات
+    # Close database
     await close_db()
     
-    logger.info("✅ تم إيقاف نظام نظرة بنجاح")
+    logger.info("Nazra System stopped successfully")
     logger.info("=" * 50)
 
 
@@ -242,10 +243,10 @@ if RATE_LIMIT_AVAILABLE:
     limiter = Limiter(key_func=get_remote_address)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-    logger.info("🛡️ Rate Limiting مفعّل")
+    logger.info("Rate Limiting enabled")
 else:
     limiter = None
-    logger.warning("⚠️ slowapi غير مثبت - Rate Limiting معطّل")
+    logger.warning("slowapi not installed - Rate Limiting disabled")
 
 
 # ===============================
@@ -295,6 +296,12 @@ app.include_router(
 )
 
 app.include_router(
+    incidents_router,
+    prefix=settings.API_V1_PREFIX,
+    tags=["الحوادث"]
+)
+
+app.include_router(
     stream_router,
     prefix=settings.API_V1_PREFIX,
     tags=["البث"]
@@ -325,6 +332,26 @@ app.include_router(
     prefix="/ws",
     tags=["WebSocket"]
 )
+
+
+# ===============================
+# خدمة الملفات الثابتة (الصور)
+# ===============================
+import os
+from pathlib import Path
+
+# مسار مجلد التنبيهات
+BACKEND_DIR = Path(__file__).parent.parent
+ALERTS_DIR = BACKEND_DIR / "alerts"
+SNAPSHOTS_DIR = BACKEND_DIR / "snapshots"
+
+# التأكد من وجود المجلدات
+ALERTS_DIR.mkdir(exist_ok=True)
+SNAPSHOTS_DIR.mkdir(exist_ok=True)
+
+# تقديم صور التنبيهات
+app.mount("/alerts", StaticFiles(directory=str(ALERTS_DIR)), name="alerts")
+app.mount("/snapshots", StaticFiles(directory=str(SNAPSHOTS_DIR)), name="snapshots")
 
 
 # ===============================

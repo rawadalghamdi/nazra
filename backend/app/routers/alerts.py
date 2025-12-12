@@ -9,7 +9,8 @@ GET /api/v1/alerts/{alert_id}/image - جلب صورة التنبيه
 GET /api/v1/alerts/{alert_id}/video - جلب فيديو التنبيه
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from starlette import status as http_status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
@@ -78,7 +79,7 @@ async def get_alerts(
                 filters.append(Alert.timestamp >= from_date)
             except ValueError:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail="صيغة التاريخ غير صحيحة (date_from)"
                 )
         if date_to:
@@ -87,7 +88,7 @@ async def get_alerts(
                 filters.append(Alert.timestamp <= to_date)
             except ValueError:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
+                    status_code=http_status.HTTP_400_BAD_REQUEST,
                     detail="صيغة التاريخ غير صحيحة (date_to)"
                 )
         
@@ -129,7 +130,7 @@ async def get_alerts(
     except Exception as e:
         logger.error(f"❌ خطأ في جلب التنبيهات: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="حدث خطأ أثناء جلب التنبيهات"
         )
 
@@ -200,7 +201,7 @@ async def get_alerts_stats(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ خطأ في جلب الإحصائيات: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="حدث خطأ أثناء جلب الإحصائيات"
         )
 
@@ -222,14 +223,14 @@ async def get_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
     if not alert:
         logger.warning(f"⚠️ التنبيه غير موجود: {alert_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="التنبيه غير موجود"
         )
     
     return AlertResponse.model_validate(alert)
 
 
-@router.post("", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AlertResponse, status_code=http_status.HTTP_201_CREATED)
 async def create_alert(alert_data: AlertCreate, db: AsyncSession = Depends(get_db)):
     """
     إنشاء تنبيه جديد
@@ -265,7 +266,7 @@ async def create_alert(alert_data: AlertCreate, db: AsyncSession = Depends(get_d
         logger.error(f"❌ خطأ في إنشاء التنبيه: {e}")
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="حدث خطأ أثناء إنشاء التنبيه"
         )
 
@@ -295,7 +296,7 @@ async def review_alert(
     if not alert:
         logger.warning(f"⚠️ التنبيه غير موجود: {alert_id}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="التنبيه غير موجود"
         )
     
@@ -319,12 +320,106 @@ async def review_alert(
         logger.error(f"❌ خطأ في مراجعة التنبيه: {e}")
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="حدث خطأ أثناء مراجعة التنبيه"
         )
 
 
-@router.delete("/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch("/{alert_id}/resolve", response_model=AlertResponse)
+async def resolve_alert(
+    alert_id: str,
+    notes: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    تأكيد التنبيه كتهديد حقيقي
+    
+    - **alert_id**: معرف التنبيه
+    - **notes**: ملاحظات اختيارية
+    """
+    logger.info(f"✅ تأكيد التنبيه: {alert_id}")
+    
+    result = await db.execute(
+        select(Alert).where(Alert.id == alert_id)
+    )
+    alert = result.scalar_one_or_none()
+    
+    if not alert:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="التنبيه غير موجود"
+        )
+    
+    try:
+        alert.status = AlertStatus.CONFIRMED.value
+        alert.reviewed_at = datetime.utcnow()
+        alert.reviewed_by = "مشرف النظام"
+        if notes:
+            alert.notes = notes
+        
+        await db.commit()
+        await db.refresh(alert)
+        
+        logger.info(f"✅ تم تأكيد التنبيه: {alert_id}")
+        return AlertResponse.model_validate(alert)
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في تأكيد التنبيه: {e}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="حدث خطأ أثناء تأكيد التنبيه"
+        )
+
+
+@router.patch("/{alert_id}/false-positive", response_model=AlertResponse)
+async def mark_false_positive(
+    alert_id: str,
+    notes: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    تصنيف التنبيه كإنذار كاذب
+    
+    - **alert_id**: معرف التنبيه
+    - **notes**: ملاحظات اختيارية
+    """
+    logger.info(f"❌ تصنيف التنبيه كإنذار كاذب: {alert_id}")
+    
+    result = await db.execute(
+        select(Alert).where(Alert.id == alert_id)
+    )
+    alert = result.scalar_one_or_none()
+    
+    if not alert:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="التنبيه غير موجود"
+        )
+    
+    try:
+        alert.status = AlertStatus.FALSE_ALARM.value
+        alert.reviewed_at = datetime.utcnow()
+        alert.reviewed_by = "مشرف النظام"
+        if notes:
+            alert.notes = notes
+        
+        await db.commit()
+        await db.refresh(alert)
+        
+        logger.info(f"✅ تم تصنيف التنبيه كإنذار كاذب: {alert_id}")
+        return AlertResponse.model_validate(alert)
+        
+    except Exception as e:
+        logger.error(f"❌ خطأ في تصنيف التنبيه: {e}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="حدث خطأ أثناء تصنيف التنبيه"
+        )
+
+
+@router.delete("/{alert_id}", status_code=http_status.HTTP_204_NO_CONTENT)
 async def delete_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
     """
     حذف تنبيه
@@ -340,7 +435,7 @@ async def delete_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
     
     if not alert:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="التنبيه غير موجود"
         )
     
@@ -348,13 +443,13 @@ async def delete_alert(alert_id: str, db: AsyncSession = Depends(get_db)):
         await db.delete(alert)
         await db.commit()
         logger.info(f"✅ تم حذف التنبيه: {alert_id}")
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
+        return Response(status_code=http_status.HTTP_204_NO_CONTENT)
         
     except Exception as e:
         logger.error(f"❌ خطأ في حذف التنبيه: {e}")
         await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="حدث خطأ أثناء حذف التنبيه"
         )
 
@@ -375,13 +470,13 @@ async def get_alert_image(alert_id: str, db: AsyncSession = Depends(get_db)):
     
     if not alert:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="التنبيه غير موجود"
         )
     
     if not alert.image_snapshot:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="لا توجد صورة لهذا التنبيه"
         )
     
@@ -391,7 +486,7 @@ async def get_alert_image(alert_id: str, db: AsyncSession = Depends(get_db)):
     if not os.path.exists(image_path):
         # إرجاع صورة افتراضية أو خطأ
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="ملف الصورة غير موجود"
         )
     
@@ -418,13 +513,13 @@ async def get_alert_video(alert_id: str, db: AsyncSession = Depends(get_db)):
     
     if not alert:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="التنبيه غير موجود"
         )
     
     if not alert.video_clip:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="لا يوجد فيديو لهذا التنبيه"
         )
     
@@ -433,7 +528,7 @@ async def get_alert_video(alert_id: str, db: AsyncSession = Depends(get_db)):
     
     if not os.path.exists(video_path):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="ملف الفيديو غير موجود"
         )
     
@@ -447,7 +542,7 @@ async def get_alert_video(alert_id: str, db: AsyncSession = Depends(get_db)):
     alert = result.scalar_one_or_none()
     if not alert:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
+            status_code=http_status.HTTP_404_NOT_FOUND,
             detail="التنبيه غير موجود"
         )
     

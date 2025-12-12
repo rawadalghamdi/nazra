@@ -75,6 +75,11 @@ export function StreamWithDetection({
   const [processingTime, setProcessingTime] = useState<number>(0);
   const [frameSize, setFrameSize] = useState({ width: 1920, height: 1080 });
   const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [wsDisabled, setWsDisabled] = useState(false); // Circuit breaker
+  
+  // 🛡️ Simulation streams don't need WebSocket (detection is in the stream)
+  const isSimulation = cameraId.startsWith('simulation') || streamUrl.includes('/simulation/stream');
+  const MAX_RECONNECT_ATTEMPTS = 5; // Stop after 5 failures
   
   // الرسم مع Animation
   const drawDetectionsAnimated = useCallback((dets: Detection[], frameW: number, frameH: number) => {
@@ -184,10 +189,23 @@ export function StreamWithDetection({
   
   // الاتصال بـ WebSocket
   const connectWebSocket = useCallback(() => {
+    // 🛡️ تخطي WebSocket لكاميرا المحاكاة (الكشف مدمج في البث)
+    if (isSimulation) {
+      console.log(`⏭️ Skipping WebSocket for simulation camera (detection is in stream)`);
+      return;
+    }
+    
+    // 🛡️ Circuit breaker - توقف بعد عدة محاولات فاشلة
+    if (wsDisabled || connectionAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.log(`🛑 WebSocket disabled for ${cameraId} after ${connectionAttempts} attempts`);
+      setWsDisabled(true);
+      return;
+    }
+    
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     
     const wsUrl = `${WS_URL}/${cameraId}`;
-    console.log(`🔗 Connecting to WebSocket: ${wsUrl}`);
+    console.log(`🔗 Connecting to WebSocket: ${wsUrl} (attempt ${connectionAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
     
     const ws = new WebSocket(wsUrl);
     
@@ -232,8 +250,15 @@ export function StreamWithDetection({
       console.log(`🔌 WebSocket disconnected: ${cameraId}`);
       setIsConnected(false);
       
+      // 🛡️ توقف إذا تجاوزنا الحد الأقصى
+      if (connectionAttempts >= MAX_RECONNECT_ATTEMPTS - 1) {
+        console.log(`🛑 Max reconnection attempts reached for ${cameraId}`);
+        setWsDisabled(true);
+        return;
+      }
+      
       // إعادة الاتصال بتأخير متزايد
-      const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 30000);
+      const delay = Math.min(1000 * Math.pow(2, connectionAttempts), 10000);
       setConnectionAttempts(prev => prev + 1);
       
       reconnectTimeoutRef.current = window.setTimeout(() => {
@@ -246,7 +271,7 @@ export function StreamWithDetection({
     };
     
     wsRef.current = ws;
-  }, [cameraId, connectionAttempts, drawDetectionsAnimated, onDetection]);
+  }, [cameraId, connectionAttempts, drawDetectionsAnimated, onDetection, isSimulation, wsDisabled]);
   
   // بدء الاتصال
   useEffect(() => {
@@ -273,8 +298,9 @@ export function StreamWithDetection({
   }, [updateCanvasSize]);
   
   // بناء URL للـ MJPEG stream
-  const mjpegUrl = streamUrl.includes('/video') 
-    ? streamUrl  // IP Webcam MJPEG
+  // إذا كان simulation أو يحتوي على /stream أو /video، استخدم الرابط كما هو
+  const mjpegUrl = (cameraId.startsWith('simulation') || streamUrl.includes('/simulation/stream') || streamUrl.includes('/stream') || streamUrl.includes('/video'))
+    ? streamUrl  // استخدم الرابط المُمرر مباشرة
     : `/api/v1/stream/${cameraId}`; // Backend MJPEG proxy
   
   return (
@@ -286,14 +312,6 @@ export function StreamWithDetection({
         alt="بث مباشر"
         className="w-full h-full object-cover"
         onLoad={updateCanvasSize}
-        onError={() => {
-          // إعادة المحاولة بعد 1 ثانية
-          setTimeout(() => {
-            if (imgRef.current) {
-              imgRef.current.src = `${mjpegUrl}?retry=${Date.now()}`;
-            }
-          }, 1000);
-        }}
       />
       
       {/* Canvas للكشوفات */}

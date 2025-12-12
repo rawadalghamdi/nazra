@@ -15,6 +15,8 @@ import { formatNumber, formatPercentage } from '../../utils';
 import StatsCard from './StatsCard';
 import RecentAlerts from './RecentAlerts';
 import CameraGrid from './CameraGrid';
+import { useAlertWebSocket } from '../../hooks/useWebSocket';
+import { useAlertStore } from '../../hooks/useStore';
 
 // واجهة حالة الخدمة
 interface ServiceStatus {
@@ -30,11 +32,52 @@ function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // 🔴 WebSocket للتنبيهات الفورية
+  const { lastAlert, isConnected } = useAlertWebSocket();
+  const { showAlertPopup } = useAlertStore();
+
   useEffect(() => {
     loadDashboardData();
     const interval = setInterval(loadDashboardData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // 🔔 استقبال التنبيهات الجديدة من WebSocket
+  useEffect(() => {
+    if (lastAlert) {
+      const alertData = lastAlert as any;
+      const newAlert: Alert = {
+        id: alertData.id || alertData.alert_id || `alert-${Date.now()}`,
+        cameraId: alertData.cameraId || alertData.camera_id || 'simulation',
+        cameraName: alertData.cameraName || alertData.camera_name || 'كاميرا المحاكاة',
+        location: alertData.location || 'فيديو تجريبي',
+        weaponType: alertData.weaponType || alertData.weapon_type || 'سكين',
+        detectionType: alertData.detectionType || 'weapon',
+        confidence: alertData.confidence || 0,
+        imageSnapshot: alertData.imageSnapshot || alertData.image_snapshot || '',
+        boundingBox: alertData.boundingBox || alertData.bbox || alertData.bounding_box || { x: 0, y: 0, width: 100, height: 100 },
+        timestamp: alertData.timestamp || new Date().toISOString(),
+        status: 'جديد',
+        severity: alertData.severity || 'high',
+      };
+
+      // تجنب التكرار
+      const exists = recentAlerts.some(a => a.id === newAlert.id);
+      if (!exists) {
+        console.log('🚨 [Dashboard] تنبيه جديد:', newAlert);
+        setRecentAlerts(prev => [newAlert, ...prev].slice(0, 10));
+        showAlertPopup(newAlert);
+        // تحديث الإحصائيات
+        if (stats) {
+          setStats({
+            ...stats,
+            alertsToday: (stats.alertsToday || 0) + 1,
+            pendingAlerts: (stats.pendingAlerts || 0) + 1,
+          });
+        }
+      }
+    }
+  }, [lastAlert, recentAlerts, showAlertPopup, stats]);
 
   const loadDashboardData = async () => {
     try {
@@ -54,7 +97,7 @@ function Dashboard() {
       setServiceStatuses([
         { label: 'خدمة الكشف', status: 'online', latency: apiLatency },
         { label: 'قاعدة البيانات', status: 'online', latency: Math.round(apiLatency * 0.3) },
-        { label: 'WebSocket', status: 'online', latency: Math.round(apiLatency * 0.2) },
+        { label: 'WebSocket', status: isConnected ? 'online' : 'warning', latency: isConnected ? Math.round(apiLatency * 0.2) : undefined },
         { label: 'خدمة التنبيهات', status: 'online', latency: Math.round(apiLatency * 0.5) },
       ]);
       

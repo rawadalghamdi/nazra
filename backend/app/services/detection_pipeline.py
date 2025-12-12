@@ -29,7 +29,7 @@ except ImportError:
     import hashlib
     XXHASH_AVAILABLE = False
 
-logger = logging.getLogger("نظرة.pipeline")
+logger = logging.getLogger("nazra.pipeline")
 
 
 class DetectionPriority(Enum):
@@ -211,7 +211,7 @@ class DetectionPipeline:
         # Detector reference
         self._detector = None
         
-        logger.info(f"🔧 تهيئة Pipeline: {num_workers} workers, interval={detection_interval}s")
+        logger.info(f"Pipeline init: {num_workers} workers, interval={detection_interval}s")
     
     async def start(self):
         """بدء خط الأنابيب"""
@@ -236,7 +236,7 @@ class DetectionPipeline:
             worker = asyncio.create_task(self._worker_loop(i))
             self._workers.append(worker)
         
-        logger.info(f"✅ Pipeline started with {self.num_workers} workers")
+        logger.info(f"Pipeline started with {self.num_workers} workers")
     
     async def stop(self):
         """إيقاف خط الأنابيب"""
@@ -254,7 +254,7 @@ class DetectionPipeline:
         if self._http_client:
             await self._http_client.aclose()
         
-        logger.info("⏹️ Pipeline stopped")
+        logger.info("Pipeline stopped")
     
     async def add_camera(
         self,
@@ -277,7 +277,7 @@ class DetectionPipeline:
         self._active_cameras[camera_id]["task"] = task
         
         self._stats["cameras_active"] = len(self._active_cameras)
-        logger.info(f"📷 Camera added: {camera_id}")
+        logger.info(f"Camera added: {camera_id}")
     
     async def remove_camera(self, camera_id: str):
         """إزالة كاميرا"""
@@ -287,7 +287,7 @@ class DetectionPipeline:
                 task.cancel()
             del self._active_cameras[camera_id]
             self._stats["cameras_active"] = len(self._active_cameras)
-            logger.info(f"📷 Camera removed: {camera_id}")
+            logger.info(f"Camera removed: {camera_id}")
     
     def add_result_callback(self, callback: Callable):
         """إضافة callback لاستقبال النتائج"""
@@ -302,7 +302,7 @@ class DetectionPipeline:
     
     async def _camera_capture_loop(self, camera_id: str):
         """حلقة التقاط الإطارات من كاميرا"""
-        logger.info(f"🎥 Starting capture loop for {camera_id}")
+        logger.info(f"Starting capture loop for {camera_id}")
         
         while self._running and camera_id in self._active_cameras:
             try:
@@ -344,7 +344,7 @@ class DetectionPipeline:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"❌ Capture error for {camera_id}: {e}")
+                logger.error(f"Capture error for {camera_id}: {e}")
                 await asyncio.sleep(1)
     
     async def _fetch_frame(self, url: str) -> Optional[np.ndarray]:
@@ -361,7 +361,7 @@ class DetectionPipeline:
     
     async def _worker_loop(self, worker_id: int):
         """حلقة العامل"""
-        logger.info(f"👷 Worker {worker_id} started")
+        logger.info(f"Worker {worker_id} started")
         
         while self._running:
             try:
@@ -384,7 +384,7 @@ class DetectionPipeline:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"❌ Worker {worker_id} error: {e}")
+                logger.error(f"Worker {worker_id} error: {e}")
     
     async def _process_task(self, task: FrameTask) -> DetectionResult:
         """معالجة مهمة كشف"""
@@ -432,7 +432,7 @@ class DetectionPipeline:
             )
             
         except Exception as e:
-            logger.error(f"❌ Detection error: {e}")
+            logger.error(f"Detection error: {e}")
             return DetectionResult(
                 camera_id=task.camera_id,
                 timestamp=task.timestamp,
@@ -452,7 +452,7 @@ class DetectionPipeline:
                 else:
                     callback(result)
             except Exception as e:
-                logger.error(f"❌ Callback error: {e}")
+                logger.error(f"Callback error: {e}")
     
     def _update_avg_time(self, new_time: float):
         """تحديث متوسط وقت المعالجة"""

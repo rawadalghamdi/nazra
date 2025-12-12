@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Crosshair,
+  Target,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useAlertStore } from '../../hooks/useStore';
@@ -28,6 +29,7 @@ const navigationItems: NavigationItem[] = [
   { name: 'لوحة التحكم', href: '/', icon: LayoutDashboard },
   { name: 'البث المباشر', href: '/live', icon: Video },
   { name: 'التنبيهات', href: '/alerts', icon: Bell, badgeKey: 'alerts' },
+  { name: 'الحوادث', href: '/incidents', icon: Target },
   { name: 'الكاميرات', href: '/cameras', icon: Camera },
   { name: 'اختبار الكشف', href: '/detection', icon: Crosshair },
   { name: 'التقارير', href: '/reports', icon: FileBarChart },
@@ -47,9 +49,11 @@ function Sidebar() {
     const fetchAlertsCount = async () => {
       try {
         const stats = await alertService.getStats();
-        // التنبيهات الجديدة + قيد المراجعة
-        const pending = (stats.new || 0) + (stats.reviewing || 0);
-        setPendingAlertsCount(pending);
+        // API يرجع: total_today, pending, confirmed, false_alarms, under_review
+        // pending = التنبيهات الجديدة، under_review = قيد المراجعة
+        const count = (stats.pending || 0) + (stats.under_review || 0);
+        console.log('📊 Alert stats from API:', stats, 'Badge count:', count);
+        setPendingAlertsCount(count);
       } catch (error) {
         console.error('خطأ في جلب عدد التنبيهات:', error);
       }
@@ -57,8 +61,8 @@ function Sidebar() {
     
     fetchAlertsCount();
     
-    // تحديث كل 30 ثانية
-    const interval = setInterval(fetchAlertsCount, 30000);
+    // تحديث كل 10 ثوانٍ للحصول على تحديثات أسرع
+    const interval = setInterval(fetchAlertsCount, 10000);
     return () => clearInterval(interval);
   }, []);
   

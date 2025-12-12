@@ -15,7 +15,7 @@ import logging
 import os
 
 # إعداد السجل
-logger = logging.getLogger("نظرة.الكشف")
+logger = logging.getLogger("nazra.detector")
 
 # استيراد اختياري للمكتبات الثقيلة
 try:
@@ -24,7 +24,7 @@ try:
 except ImportError:
     np = None
     NUMPY_AVAILABLE = False
-    logger.warning("⚠️ مكتبة numpy غير متوفرة")
+    logger.warning("numpy not available")
 
 try:
     import cv2
@@ -32,7 +32,7 @@ try:
 except ImportError:
     cv2 = None
     CV2_AVAILABLE = False
-    logger.warning("⚠️ مكتبة OpenCV غير متوفرة")
+    logger.warning("OpenCV not available")
 
 try:
     from ultralytics import YOLO
@@ -40,7 +40,7 @@ try:
 except ImportError:
     YOLO = None
     YOLO_AVAILABLE = False
-    logger.warning("⚠️ مكتبة ultralytics غير متوفرة")
+    logger.warning("ultralytics not available")
 
 
 @dataclass
@@ -122,8 +122,8 @@ class WeaponDetector:
         self.average_time = 0.0
         self.last_detection_time: Optional[datetime] = None
         
-        logger.info(f"🎯 تهيئة محرك الكشف - حد الثقة: {confidence_threshold}")
-        logger.info(f"🖥️ الجهاز المستخدم: {self.device}")
+        logger.info(f"Initializing detector - Confidence: {confidence_threshold}")
+        logger.info(f"Device: {self.device}")
     
     def _detect_best_device(self, requested: str) -> str:
         """
@@ -143,7 +143,7 @@ class WeaponDetector:
             # التحقق من CUDA (NVIDIA GPU)
             if torch.cuda.is_available():
                 gpu_name = torch.cuda.get_device_name(0)
-                logger.info(f"🎮 CUDA متاح: {gpu_name}")
+                logger.info(f"CUDA available: {gpu_name}")
                 return "cuda"
             
             # التحقق من MPS (Apple Silicon M1/M2/M3/M4)
@@ -152,10 +152,10 @@ class WeaponDetector:
                 try:
                     test_tensor = torch.zeros(1, device='mps')
                     del test_tensor
-                    logger.info("🍎 MPS (Apple Metal) متاح ومفعّل - تسريع GPU!")
+                    logger.info("MPS (Apple Metal) available - GPU acceleration enabled!")
                     return "mps"
                 except Exception as e:
-                    logger.warning(f"⚠️ MPS موجود لكن غير مستقر: {e}")
+                    logger.warning(f"MPS available but unstable: {e}")
             
             logger.info("💻 استخدام CPU")
             return "cpu"
@@ -170,11 +170,11 @@ class WeaponDetector:
         Returns:
             bool: نجاح التحميل
         """
-        logger.info("📥 جاري تحميل نموذج الكشف...")
-        logger.info(f"📂 مسار النموذج: {self.model_path}")
+        logger.info("Loading detection model...")
+        logger.info(f"Model path: {self.model_path}")
         
         if not YOLO_AVAILABLE:
-            logger.error("❌ مكتبة ultralytics غير مثبتة")
+            logger.error("ultralytics not installed")
             return False
         
         try:
@@ -182,7 +182,7 @@ class WeaponDetector:
             
             # التحقق من وجود الملف
             if not os.path.exists(model_file):
-                logger.warning(f"⚠️ ملف النموذج غير موجود: {model_file}")
+                logger.warning(f"Model file not found: {model_file}")
                 # محاولة مسارات بديلة
                 alt_paths = [
                     "/app/models/best.pt",
@@ -193,13 +193,13 @@ class WeaponDetector:
                 for alt_path in alt_paths:
                     if os.path.exists(alt_path):
                         model_file = alt_path
-                        logger.info(f"📂 تم العثور على النموذج في: {model_file}")
+                        logger.info(f"Model found at: {model_file}")
                         break
                 else:
-                    logger.info("📥 سيتم استخدام نموذج YOLO الافتراضي")
+                    logger.info("Using default YOLO model")
                     model_file = "yolov8n.pt"
             
-            logger.info(f"📦 جاري تحميل النموذج من: {model_file}")
+            logger.info(f"Loading model from: {model_file}")
             
             # إصلاح مشكلة PyTorch 2.6 weights_only
             try:
@@ -223,13 +223,13 @@ class WeaponDetector:
                     import torch
                     if torch.cuda.is_available():
                         self.device = "cuda"
-                        logger.info("🎮 استخدام GPU (CUDA)")
+                        logger.info("Using GPU (CUDA)")
                     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                         self.device = "mps"
-                        logger.info("🍎 استخدام Apple Silicon (MPS)")
+                        logger.info("Using Apple Silicon (MPS)")
                     else:
                         self.device = "cpu"
-                        logger.info("💻 استخدام CPU")
+                        logger.info("Using CPU")
                 except ImportError:
                     self.device = "cpu"
             
@@ -237,9 +237,9 @@ class WeaponDetector:
             
             # عرض معلومات النموذج
             if hasattr(self.model, 'names') and self.model.names:
-                logger.info(f"📊 فئات النموذج: {self.model.names}")
+                logger.info(f"Model classes: {self.model.names}")
             
-            logger.info(f"✅ تم تحميل النموذج على: {self.device}")
+            logger.info(f"Model loaded on: {self.device}")
             
             # ⚡ Model Warmup - تسخين النموذج لتسريع أول inference
             await self._warmup_model()
@@ -247,7 +247,7 @@ class WeaponDetector:
             return True
             
         except Exception as e:
-            logger.error(f"❌ خطأ في تحميل النموذج: {e}")
+            logger.error(f"Model loading error: {e}")
             return False
     
     async def _warmup_model(self):
@@ -262,7 +262,7 @@ class WeaponDetector:
         
         try:
             import numpy as np
-            logger.info("⚡ جاري تسخين النموذج...")
+            logger.info("Warming up model...")
             
             # إنشاء صورة وهمية بحجم نموذجي
             dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
@@ -276,10 +276,10 @@ class WeaponDetector:
                     verbose=False
                 )
             
-            logger.info("✅ تم تسخين النموذج - جاهز للاستخدام!")
+            logger.info("Model warmed up - ready!")
             
         except Exception as e:
-            logger.warning(f"⚠️ فشل تسخين النموذج: {e}")
+            logger.warning(f"Model warmup failed: {e}")
     
     def detect_sync(
         self,
@@ -381,7 +381,7 @@ class WeaponDetector:
                     detections.append(detection)
                     
         except Exception as e:
-            logger.error(f"❌ خطأ في الكشف: {e}")
+            logger.error(f"Detection error: {e}")
         
         processing_time = time.time() - start_time
         self.total_frames += 1
@@ -420,7 +420,7 @@ class WeaponDetector:
         
         # التحقق من تحميل النموذج
         if not self.is_loaded or self.model is None:
-            logger.warning("⚠️ النموذج غير محمل")
+            logger.warning("Model not loaded")
             return DetectionResult(
                 frame_id=frame_id,
                 camera_id=camera_id,
@@ -488,7 +488,7 @@ class WeaponDetector:
                 annotated_frame = self._draw_detections(frame.copy(), detections)
             
         except Exception as e:
-            logger.error(f"❌ خطأ في الكشف: {e}")
+            logger.error(f"Detection error: {e}")
             annotated_frame = frame
         
         processing_time = time.time() - start_time
@@ -504,8 +504,8 @@ class WeaponDetector:
         if detections:
             self.last_detection_time = datetime.utcnow()
             logger.info(
-                f"🎯 تم كشف {len(detections)} سلاح في {processing_time:.3f}ث - "
-                f"الكاميرا: {camera_id}"
+                f"Detected {len(detections)} weapon(s) in {processing_time:.3f}s - "
+                f"Camera: {camera_id}"
             )
         
         return DetectionResult(
@@ -609,7 +609,7 @@ class WeaponDetector:
         self.total_detections = 0
         self.total_frames = 0
         self.average_time = 0.0
-        logger.info("🔄 تم إعادة تعيين إحصائيات الكشف")
+        logger.info("Detection stats reset")
 
 
 # إنشاء كائن الكشف العام
@@ -676,5 +676,5 @@ async def shutdown_detector():
     """
     global _detector
     if _detector is not None:
-        logger.info("🛑 إيقاف محرك الكشف")
+        logger.info("Stopping detector")
         _detector = None

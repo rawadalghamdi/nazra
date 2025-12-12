@@ -9,6 +9,7 @@ import CameraManagement from './components/Camera/CameraManagement'
 import CameraDetail from './components/Camera/CameraDetail'
 import LiveStreamPage from './components/Camera/LiveStreamPage'
 import AlertsList from './components/Alerts/AlertsList'
+import { IncidentsPage } from './components/Incidents'
 import Settings from './components/Settings/Settings'
 import ReportsPage from './components/Reports/ReportsPage'
 import { DetectionTestPage, VideoTestPage } from './components/Detection'
@@ -35,6 +36,7 @@ const App: React.FC = () => {
           <Route path="cameras/:id" element={<CameraDetail />} />
           <Route path="cameras/:id/view" element={<CameraView />} />
           <Route path="alerts" element={<AlertsList />} />
+          <Route path="incidents" element={<IncidentsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="detection" element={<DetectionTestPage />} />
           <Route path="detection/video" element={<VideoTestPage />} />
